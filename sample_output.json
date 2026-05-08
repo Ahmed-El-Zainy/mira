@@ -1,0 +1,49 @@
+{
+  "company_ticker": "TSLA",
+  "company_name": "Tesla, Inc.",
+  "analysis_summary": "Tesla continues to exhibit above-market volatility with a strong correlation to the consumer discretionary sector (0.89), suggesting macro tailwinds and headwinds affect it disproportionately. Recent news sentiment is cautiously positive (score: 0.2), driven by optimism around the Cybertruck ramp and FSD v12 rollout, partially offset by concerns around margin compression from aggressive price cuts. The stock sits near the midpoint of its 52-week range, trading at a premium P/E of 65x that demands continued execution. Volume is trending close to the 30-day average, indicating no unusual institutional activity in the near term.",
+  "sentiment_score": 0.2,
+  "market_snapshot": {
+    "price": 245.67,
+    "daily_change_pct": 1.23,
+    "market_cap": 782500000000,
+    "pe_ratio": 65.4,
+    "52w_high": 299.29,
+    "52w_low": 152.37,
+    "quarterly_revenues": [25170000000, 23350000000]
+  },
+  "correlation_analysis": {
+    "market_correlation": 0.72,
+    "sector_etf": "XLY",
+    "sector_correlation": 0.89,
+    "peer_correlations": {
+      "RIVN": 0.78,
+      "NIO": 0.65
+    },
+    "all_correlations": {
+      "TSLA": 1.0,
+      "RIVN": 0.78,
+      "NIO": 0.65,
+      "^GSPC": 0.72,
+      "XLY": 0.89
+    }
+  },
+  "key_findings": [
+    "Tesla's elevated sector correlation (0.89) means near-term price action will likely track broader consumer discretionary moves; position sizing should account for macro sensitivity, not just company fundamentals.",
+    "Positive news sentiment (+0.2) around FSD v12 adoption and Cybertruck production ramp provides a near-term catalyst, but the high P/E of 65x leaves limited margin of safety if delivery guidance is missed next quarter.",
+    "The stock is trading at roughly 82% of its 52-week high with no abnormal volume signal, suggesting the market has not yet priced in a directional catalyst – a break above $260 on volume could signal a trend resumption."
+  ],
+  "tools_used": ["market_data", "news_sentiment", "peer_correlation"],
+  "citation_sources": [
+    "https://example-finance.com/tesla-fsd-v12-rollout-details",
+    "https://example-news.com/tesla-cybertruck-production-ramp",
+    "https://example-market.com/tesla-margin-compression-analysis",
+    "https://example-analyst.com/tesla-price-target-raised-240",
+    "https://example-sector.com/ev-market-competition-update"
+  ],
+  "generated_at": "2024-11-15T14:30:45Z",
+  "reflection": {
+    "triggers_fired": [],
+    "reasoning": "All quality checks passed – sector correlation below 0.95, news is fresh, sentiment is non-neutral."
+  }
+}
