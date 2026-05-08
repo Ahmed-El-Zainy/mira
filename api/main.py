@@ -2,6 +2,15 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env from the project root regardless of the working directory.
+# This runs before any other module imports settings, so all env vars
+# are populated when pydantic-settings reads them.
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=_ENV_FILE, override=False)  # override=False: real env vars win
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
