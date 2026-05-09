@@ -5,13 +5,12 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from openai import AsyncOpenAI
-
 from agent.executor import Executor
 from agent.planner import Planner
 from agent.reflection import ReflectionModule
 from storage.redis_client import RedisClient
 from utils.config import get_settings
+from utils.llm_client import clean_llm_response, get_llm_client, get_model_name, supports_json_mode
 from utils.logging import AgentLogger
 
 _settings = get_settings()
@@ -20,7 +19,7 @@ _SYNTHESIS_SYSTEM = """
 You are M.I.R.A., an expert AI financial analyst. Using ONLY the structured data
 provided, produce a JSON investment analysis report.
 
-Return ONLY valid JSON matching this exact schema (no markdown fences):
+Return ONLY valid JSON matching this exact schema. No markdown fences, no explanation:
 {
   "company_ticker":    "STRING",
   "company_name":      "STRING",
@@ -63,7 +62,8 @@ class AgentCore:
         self._reflection = ReflectionModule()
         self._redis      = RedisClient()
         self._logger     = AgentLogger()
-        self._client     = AsyncOpenAI(api_key=_settings.openai_api_key)
+        self._client     = get_llm_client()
+        self._model      = get_model_name()
 
     # ── public entry point ────────────────────────────────────────────────────
     async def run_analysis(self, job_id: str, query: str, tag: str = "") -> None:
@@ -81,12 +81,12 @@ class AgentCore:
         self._redis.update_job_status(job_id, {"status": "planning", "progress": 10})
         plan = await self._planner.create_initial_plan(query)
 
-        ticker   = plan.get("ticker", "UNKNOWN").upper()
-        company  = plan.get("company", ticker)
+        ticker  = plan.get("ticker", "UNKNOWN").upper()
+        company = plan.get("company", ticker)
 
         # 2. Execute initial plan
         self._redis.update_job_status(job_id, {"status": "executing", "progress": 30})
-        results  = await self._executor.execute_plan(plan, job_id)
+        results = await self._executor.execute_plan(plan, job_id)
 
         # Check for hard errors from market_data (unknown / delisted ticker)
         mkt = results.get("market_data", {})
@@ -110,8 +110,8 @@ class AgentCore:
         if tag:
             report["tag"] = tag
         report["reflection"] = {
-            "triggers_fired":    reflection.get("triggers_fired", []),
-            "reasoning":         reflection.get("reasoning", ""),
+            "triggers_fired": reflection.get("triggers_fired", []),
+            "reasoning":      reflection.get("reasoning", ""),
         }
 
         # 5. Persist & complete
@@ -127,36 +127,39 @@ class AgentCore:
         query: str,
     ) -> dict[str, Any]:
         context = {
-            "ticker":  ticker,
-            "company": company,
-            "query":   query,
-            "data":    results,
+            "ticker":       ticker,
+            "company":      company,
+            "query":        query,
+            "data":         results,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        resp = await self._client.chat.completions.create(
-            model=_settings.llm_model,
-            response_format={"type": "json_object"},
+        kwargs = dict(
+            model=self._model,
             messages=[
                 {"role": "system", "content": _SYNTHESIS_SYSTEM},
                 {"role": "user",   "content": json.dumps(context)},
             ],
         )
+        if supports_json_mode():
+            kwargs["response_format"] = {"type": "json_object"}
+
+        resp = await self._client.chat.completions.create(**kwargs)
 
         usage = resp.usage
         if usage:
             self._logger.log_token_usage(
-                job_id=ticker,  # used as context key here
+                job_id=ticker,
                 prompt_tokens=usage.prompt_tokens,
                 completion_tokens=usage.completion_tokens,
-                model=_settings.llm_model,
+                model=self._model,
             )
 
-        raw = resp.choices[0].message.content
+        raw    = clean_llm_response(resp.choices[0].message.content)
         report = json.loads(raw)
 
-        # Ensure citation_sources are populated from news data
-        articles = results.get("news_sentiment", {}).get("articles", [])
+        # Ensure citation_sources populated from news data
+        articles      = results.get("news_sentiment", {}).get("articles", [])
         existing_urls = set(report.get("citation_sources") or [])
         for a in articles:
             url = a.get("url")
@@ -164,6 +167,5 @@ class AgentCore:
                 report.setdefault("citation_sources", []).append(url)
                 existing_urls.add(url)
 
-        # Ensure tools_used is populated
         report["tools_used"] = list(results.keys())
         return report
