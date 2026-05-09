@@ -348,7 +348,7 @@
           <div class="gauge-divider"></div>
           <div class="gauge-wrap">
             <canvas id="chartCloud" width="130" height="80"></canvas>
-            <div class="gauge-label" id="cloud-label">HF CLOUD · FINBERT-TONE</div>
+            <div class="gauge-label" id="cloud-label">QWEN CLOUD · ANALYST</div>
             <div class="gauge-score" id="score-cloud">—</div>
           </div>
         </div>
@@ -731,7 +731,7 @@ function renderReport(data) {
 
   // Cloud label reflects current HF model
   document.getElementById('cloud-label').textContent =
-    currentProvider === 'hf' ? `HF CLOUD · ${currentModel.split('/').pop().substring(0,15).toUpperCase()}` : 'HF CLOUD · FINBERT-TONE';
+    currentProvider === 'hf' ? `QWEN CLOUD · ${currentModel.split('/').pop().substring(0,15).toUpperCase()}` : 'QWEN CLOUD · ANALYST';
 
   // Consensus badge
   const badge2 = document.getElementById('consensus-badge');

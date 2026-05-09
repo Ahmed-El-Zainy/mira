@@ -64,6 +64,18 @@ async def start_monitoring(request: MonitoringRequest):
     }
 
 
+# ── GET /config ───────────────────────────────────────────────────────────────
+@router.get("/config")
+async def get_config():
+    """Return public application configuration."""
+    return {
+        "llm_provider": _settings.llm_provider,
+        "ollama_model": _settings.ollama_model,
+        "hf_model_id": _settings.llm_hf_model_id,
+        "hf_sentiment_model": _settings.hf_model_id,
+    }
+
+
 # ── GET /health ───────────────────────────────────────────────────────────────
 @router.get("/health")
 async def health_check():

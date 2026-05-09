@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -24,7 +25,8 @@ Return ONLY valid JSON matching this exact schema. No markdown fences, no explan
   "company_ticker":    "STRING",
   "company_name":      "STRING",
   "analysis_summary":  "STRING – 3-5 sentence concise synthesis",
-  "sentiment_score":   FLOAT (-1.0 to 1.0),
+  "sentiment_score":   FLOAT (-1.0 to 1.0) -- from news_sentiment tool,
+  "hf_sentiment_score": FLOAT (-1.0 to 1.0) -- from hf_sentiment tool,
   "market_snapshot": {
     "price":               NUMBER | null,
     "daily_change_pct":    NUMBER | null,
@@ -49,8 +51,10 @@ Return ONLY valid JSON matching this exact schema. No markdown fences, no explan
 
 Rules:
   • sentiment_score must equal the news_sentiment.sentiment_score value.
+  • hf_sentiment_score must equal the hf_sentiment.score value.
   • market_snapshot must be populated from market_data tool results.
   • key_findings must be exactly 3 actionable, specific insights.
+  • Analysis summary should briefly mention if Local and HF Cloud models agree or disagree on sentiment.
   • Do NOT invent data that is missing from the provided tool results.
 """.strip()
 
@@ -105,6 +109,12 @@ class AgentCore:
 
         # 4. Synthesise final report
         self._redis.update_job_status(job_id, {"status": "synthesising", "progress": 90})
+        
+        # Log sentiment results for transparency
+        local_s = results.get("news_sentiment", {}).get("sentiment_score", "N/A")
+        cloud_s = results.get("hf_sentiment", {}).get("score", "N/A")
+        logging.info(f"Synthesising results — Local Score: {local_s}, Cloud Score: {cloud_s}")
+
         report = await self._synthesise(ticker, company, results, query)
 
         if tag:

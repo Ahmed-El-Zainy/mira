@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import os
 from functools import lru_cache
 from typing import Any
@@ -56,7 +57,19 @@ class NewsSentimentTool:
                 "oldest_article_hours": None,
             }
 
-        nlp = _get_pipeline()
+        try:
+            nlp = _get_pipeline()
+        except Exception as e:
+            # Handle NumPy 2.x or model loading issues gracefully
+            logging.getLogger("mira").warning(f"Local FinBERT failed: {str(e)}. Falling back to neutral scores.")
+            return {
+                "articles": articles,
+                "sentiment_distribution": {"positive": 0, "negative": 0, "neutral": len(articles)},
+                "sentiment_score": 0.0,
+                "article_count": len(articles),
+                "error": str(e)
+            }
+
         results = []
         dist: dict[str, int] = {"positive": 0, "negative": 0, "neutral": 0}
         oldest_hours: float | None = None
