@@ -24,9 +24,12 @@ _FINBERT_MODEL = "ProsusAI/finbert"
 @lru_cache(maxsize=1)
 def _get_pipeline():
     """Lazy-load FinBERT so it doesn't block startup."""
-    from transformers import pipeline  # type: ignore
-
-    return pipeline("sentiment-analysis", model=_FINBERT_MODEL, truncation=True)
+    try:
+        from transformers import pipeline  # type: ignore
+        return pipeline("sentiment-analysis", model=_FINBERT_MODEL, truncation=True)
+    except (AttributeError, ImportError) as e:
+        # NumPy 2.x crash happens during import
+        raise RuntimeError(f"FinBERT initialization failed: {str(e)}")
 
 
 def _article_id(url: str) -> str:

@@ -1,6 +1,9 @@
 import httpx
 import json
+import logging
 from utils.config import get_settings
+
+logger = logging.getLogger("mira")
 
 class HuggingFaceSentimentTool:
     def __init__(self, token: str, model_id: str):
@@ -10,7 +13,10 @@ class HuggingFaceSentimentTool:
 
     async def get_sentiment(self, text: str) -> float:
         if not self.token:
+            logger.warning("HuggingFace token missing. Skipping cloud sentiment.")
             return 0.0
+        
+        logger.info(f"Calling HuggingFace API for sentiment (model: {self.model_id})...")
         headers = {"Authorization": f"Bearer {self.token}"}
         payload = {"inputs": text[:512]} # Truncate for safety
         async with httpx.AsyncClient() as client:

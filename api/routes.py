@@ -1,4 +1,5 @@
 """api/routes.py – all REST endpoints."""
+
 from __future__ import annotations
 
 import uuid
@@ -10,10 +11,10 @@ from api.models import AnalysisRequest, JobStatus, MonitoringRequest
 from storage.redis_client import RedisClient
 from utils.config import get_settings
 
-router     = APIRouter()
-_redis     = RedisClient()
-_settings  = get_settings()
-_agent     = AgentCore()
+router = APIRouter()
+_redis = RedisClient()
+_settings = get_settings()
+_agent = AgentCore()
 
 
 # ── POST /analyze ─────────────────────────────────────────────────────────────
@@ -21,12 +22,15 @@ _agent     = AgentCore()
 async def analyze_company(request: AnalysisRequest, background_tasks: BackgroundTasks):
     """Submit a company analysis request. Returns job_id immediately."""
     job_id = str(uuid.uuid4())
-    _redis.set_job_status(job_id, {
-        "job_id": job_id,
-        "status": "queued",
-        "progress": 0,
-        "tool_calls_used": 0,
-    })
+    _redis.set_job_status(
+        job_id,
+        {
+            "job_id": job_id,
+            "status": "queued",
+            "progress": 0,
+            "tool_calls_used": 0,
+        },
+    )
     background_tasks.add_task(_agent.run_analysis, job_id, request.query)
     return JobStatus(job_id=job_id, status="queued")
 
@@ -58,21 +62,37 @@ async def start_monitoring(request: MonitoringRequest):
     """Register a ticker for background persistent monitoring."""
     _redis.register_monitored_ticker(request.ticker.upper(), request.cadence_hours)
     return {
-        "status":        "monitoring_started",
-        "ticker":        request.ticker.upper(),
+        "status": "monitoring_started",
+        "ticker": request.ticker.upper(),
         "cadence_hours": request.cadence_hours,
     }
+    # ── REPLACE the existing GET /config route in api/routes.py with this ─────────
+    #
+    # Problem: the old route returned _settings.hf_model_id which is the
+    # FinBERT SENTIMENT model ("yiyanghkust/finbert-tone"), not the LLM model.
+    # The demo selector should show the LLM model (llm_hf_model_id).
 
 
-# ── GET /config ───────────────────────────────────────────────────────────────
 @router.get("/config")
 async def get_config():
-    """Return public application configuration."""
+    """
+        Return public LLM configuration so the demo can build its
+        model selector directly from .env values — nothing hardcoded in HTML.
+
+    Response shape (matches what loadConfig() in demo.html expects):
+      {
+        "llm_provider":       "hf" | "ollama" | "openai",
+        "ollama_model":       "lfm2.5-thinking:1.2b",          # OLLAMA_MODEL
+        "hf_model_id":        "Qwen/Qwen3.6-35B-A3B:deepinfra", # LLM_HF_MODEL_ID  ← LLM
+        "hf_sentiment_model": "yiyanghkust/finbert-tone"         # HF_MODEL_ID      ← classification
+      }
+
+    """
     return {
         "llm_provider": _settings.llm_provider,
         "ollama_model": _settings.ollama_model,
-        "hf_model_id": _settings.llm_hf_model_id,
-        "hf_sentiment_model": _settings.hf_model_id,
+        "hf_model_id": _settings.llm_hf_model_id,  # ← LLM model for the selector
+        "hf_sentiment_model": _settings.hf_model_id,  # ← sentiment model (display only)
     }
 
 

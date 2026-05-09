@@ -23,7 +23,8 @@ Respond ONLY with a valid JSON object. No explanation, no markdown fences:
   "steps": [
     {"tool": "market_data",      "reason": "…"},
     {"tool": "news_sentiment",   "reason": "…"},
-    {"tool": "peer_correlation", "reason": "…"}
+    {"tool": "peer_correlation", "reason": "…"},
+    {"tool": "hf_sentiment",     "reason": "compare results with cloud model"}
   ]
 }
 """.strip()
