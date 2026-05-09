@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     # News
     news_api_key: str = ""
 
+    # HuggingFace
+    huggingface_token: str = ""
+    hf_model_id: str = "yiyanghkust/finbert-tone"
+
     # Redis
     redis_host: str = "localhost"
     redis_port: int = 6379
