@@ -298,19 +298,19 @@
       <div class="card mb-4" id="sentiment-card">
         <div class="row mb-3">
           <div class="card-label" style="margin:0;">SENTIMENT COMPARISON</div>
-          <div id="consensus-badge">MATCH</div>
+          <div id="consensus-badge" class="px-3 py-1 rounded text-[10px] font-black tracking-tighter uppercase hidden"></div>
         </div>
         <div style="display:flex; align-items:center; gap:20px; justify-content:space-around;">
-          <div class="gauge-wrap">
-            <canvas id="chartLocal" width="130" height="80"></canvas>
+          <div class="gauge-wrap group relative">
+            <canvas id="sentimentChartLocal" width="140" height="140"></canvas>
+            <div id="local-score-text" class="absolute inset-0 flex items-center justify-center text-xs font-bold terminal-font opacity-0 group-hover:opacity-100 transition-opacity">0.0</div>
             <div class="gauge-label">LOCAL · FINBERT</div>
-            <div class="gauge-score" id="score-local">—</div>
           </div>
           <div class="gauge-divider"></div>
-          <div class="gauge-wrap">
-            <canvas id="chartCloud" width="130" height="80"></canvas>
+          <div class="gauge-wrap group relative">
+            <canvas id="sentimentChartCloud" width="140" height="140"></canvas>
+            <div id="cloud-score-text" class="absolute inset-0 flex items-center justify-center text-xs font-bold terminal-font opacity-0 group-hover:opacity-100 transition-opacity">0.0</div>
             <div class="gauge-label" id="cloud-label">HF CLOUD · FINBERT-TONE</div>
-            <div class="gauge-score" id="score-cloud">—</div>
           </div>
         </div>
       </div>
@@ -429,9 +429,9 @@ let chartLocal = null, chartCloud = null, revenueChart = null;
 const MOCK_DATA = {
   company_ticker: "TSLA",
   company_name: "Tesla, Inc.",
-  analysis_summary: "Tesla continues to exhibit above-market volatility with strong correlation to the consumer discretionary sector (0.89), suggesting macro tailwinds and headwinds affect it disproportionately. Recent news sentiment is cautiously positive (local FinBERT: +0.21, HF Cloud FinBERT-Tone: +0.18), driven by optimism around Cybertruck production ramp and FSD v12 adoption. Margin compression from aggressive price cuts remains the primary headwind. The dual-model sentiment consensus (MATCH) reinforces confidence in the directional signal.",
+  analysis_summary: "Tesla continues to exhibit above-market volatility with strong correlation to the consumer discretionary sector (0.89), suggesting macro tailwinds and headwinds affect it disproportionately. Recent news sentiment is cautiously positive (local FinBERT: +0.21, HF Cloud FinBERT-Tone: +0.35), driven by optimism around Cybertruck production ramp and FSD v12 adoption. Margin compression from aggressive price cuts remains the primary headwind. The dual-model sentiment consensus (MATCH) reinforces confidence in the directional signal.",
   sentiment_score: 0.21,
-  hf_sentiment_score: 0.18,
+  hf_sentiment_score: 0.35,
   market_snapshot: {
     price: 245.67,
     daily_change_pct: 1.23,
@@ -482,7 +482,7 @@ const MOCK_LOGS = [
   ['data', 'Peers → RIVN:0.78  NIO:0.65  LCID:0.52  F:0.41  GM:0.38'],
   ['hf',   'STEP 4/4 — hf_sentiment — calling HF Inference API...'],
   ['hf',   'Model: yiyanghkust/finbert-tone · Input truncated to 512 tokens'],
-  ['ok',   'HF CLOUD sentiment score: +0.18 (Positive · conf: 0.84)'],
+  ['ok',   'HF CLOUD sentiment score: +0.35 (Positive · conf: 0.84)'],
   ['ok',   'CONSENSUS: MATCH ✓ (both models agree on positive direction)'],
   ['sys',  'REFLECTION: quality checks → all passed. No re-plan required.'],
   ['sys',  'SYNTHESISING final report via LLM...'],
@@ -516,28 +516,39 @@ function setTermStatus(msg, color) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // GAUGE CHART
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function buildGauge(canvasId, score) {
+function initSentimentChart(canvasId, score) {
   const ctx = document.getElementById(canvasId).getContext('2d');
   const absScore = Math.min(Math.abs(score), 1);
   const color = score >= 0 ? '#00ff87' : '#ff4444';
-  const chart = new Chart(ctx, {
+  
+  // Update hover text
+  const textId = canvasId === 'sentimentChartLocal' ? 'local-score-text' : 'cloud-score-text';
+  const textEl = document.getElementById(textId);
+  if (textEl) {
+    textEl.textContent = (score >= 0 ? '+' : '') + score.toFixed(2);
+    textEl.style.color = color;
+  }
+
+  return new Chart(ctx, {
     type: 'doughnut',
     data: {
       datasets: [{
         data: [absScore, 1 - absScore],
-        backgroundColor: [color, '#1a1a24'],
+        backgroundColor: [color, 'rgba(255,255,255,0.05)'],
         borderWidth: 0,
         circumference: 180,
         rotation: 270
       }]
     },
     options: {
-      cutout: '78%',
+      cutout: '85%',
       responsive: false,
-      plugins: { legend: { display: false }, tooltip: { enabled: false } }
+      plugins: { 
+        legend: { display: false }, 
+        tooltip: { enabled: false } 
+      }
     }
   });
-  return chart;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -620,16 +631,8 @@ function renderReport(data) {
 
   if (chartLocal) chartLocal.destroy();
   if (chartCloud) chartCloud.destroy();
-  chartLocal = buildGauge('chartLocal', localScore);
-  chartCloud = buildGauge('chartCloud', cloudScore);
-
-  const scoreLocalEl = document.getElementById('score-local');
-  scoreLocalEl.textContent = (localScore >= 0 ? '+' : '') + localScore.toFixed(2);
-  scoreLocalEl.style.color = localScore >= 0 ? 'var(--green)' : 'var(--red)';
-
-  const scoreCloudEl = document.getElementById('score-cloud');
-  scoreCloudEl.textContent = (cloudScore >= 0 ? '+' : '') + cloudScore.toFixed(2);
-  scoreCloudEl.style.color = cloudScore >= 0 ? 'var(--green)' : 'var(--red)';
+  chartLocal = initSentimentChart('sentimentChartLocal', localScore);
+  chartCloud = initSentimentChart('sentimentChartCloud', cloudScore);
 
   // Cloud label reflects current HF model
   document.getElementById('cloud-label').textContent =
@@ -637,11 +640,16 @@ function renderReport(data) {
 
   // Consensus badge
   const badge2 = document.getElementById('consensus-badge');
-  badge2.style.display = 'block';
-  const sameSign = (localScore >= 0) === (cloudScore >= 0);
-  badge2.textContent = sameSign ? '▲ MATCH' : '↕ DIVERGE';
-  badge2.className = sameSign ? 'match' : 'diverge';
-  badge2.id = 'consensus-badge'; // reset
+  const sameSign = (localScore > 0 && cloudScore > 0) || (localScore < 0 && cloudScore < 0);
+  
+  badge2.classList.remove('hidden');
+  if (sameSign) {
+    badge2.className = 'px-3 py-1 rounded text-[10px] font-black tracking-tighter uppercase bg-green-500/10 text-green-500';
+    badge2.textContent = 'CONSENSUS: MATCH';
+  } else {
+    badge2.className = 'px-3 py-1 rounded text-[10px] font-black tracking-tighter uppercase bg-amber-500/10 text-amber-500';
+    badge2.textContent = 'CONSENSUS: DIVERGE';
+  }
 
   // Market metrics
   document.getElementById('m-pe').textContent = snap.pe_ratio ? snap.pe_ratio.toFixed(1) + 'x' : '—';
@@ -751,7 +759,7 @@ async function runDemo(query) {
     ['hf',   'STEP 4/4 — hf_sentiment → api-inference.huggingface.co...'],
     ['hf',   `Model: yiyanghkust/finbert-tone · Processing ${ticker} news headlines`],
     ['ok',   `HF CLOUD score: ${MOCK_DATA.hf_sentiment_score >= 0 ? '+' : ''}${MOCK_DATA.hf_sentiment_score} (conf: 0.84)`],
-    ['ok',   `CONSENSUS: ${(MOCK_DATA.sentiment_score >= 0) === (MOCK_DATA.hf_sentiment_score >= 0) ? 'MATCH ✓' : 'DIVERGE ⚠'}`],
+    ['ok',   `CONSENSUS: ${(MOCK_DATA.sentiment_score > 0 && MOCK_DATA.hf_sentiment_score > 0) || (MOCK_DATA.sentiment_score < 0 && MOCK_DATA.hf_sentiment_score < 0) ? 'MATCH ✓' : 'DIVERGE ⚠'}`],
     ['sys',  'REFLECTION: all quality checks passed.'],
     ['sys',  'SYNTHESISING final report...'],
     ['ok',   '>>> ANALYSIS COMPLETE.'],
