@@ -161,6 +161,50 @@
         ];
 
         let sentimentChart = null;
+        let isLive = false;
+
+        document.getElementById('mode-toggle').addEventListener('click', () => {
+            isLive = !isLive;
+            const btn = document.getElementById('mode-toggle');
+            btn.textContent = `LIVE MODE: ${isLive ? 'ON' : 'OFF'}`;
+            btn.className = `px-3 py-1 rounded border text-xs transition-colors ${isLive ? 'bg-green-900/20 border-green-500 text-green-500' : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'}`;
+        });
+
+        async function runLive() {
+            const query = prompt("Enter ticker or query:", "Analyse TSLA");
+            if (!query) return;
+
+            try {
+                updateTerminal(">>> INITIALIZING LIVE SESSION...");
+                const res = await fetch('http://localhost:8000/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                const { job_id } = await res.json();
+                updateTerminal(`Job ID: ${job_id}. Polling state...`);
+
+                let status = 'queued';
+                while (status !== 'completed' && status !== 'failed') {
+                    const pollRes = await fetch(`http://localhost:8000/status/${job_id}`);
+                    const jobData = await pollRes.json();
+                    status = jobData.status;
+
+                    updateTerminal(`State: [${status.toUpperCase()}] | Progress: ${jobData.progress}%`);
+                    
+                    if (status === 'completed') {
+                        renderReport(jobData.result);
+                        updateTerminal(">>> ANALYSIS COMPLETE.");
+                    } else if (status === 'failed') {
+                        updateTerminal(`!!! ERROR: ${jobData.error}`);
+                    }
+                    
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            } catch (err) {
+                updateTerminal(`!!! CONNECTION FAILED: ${err.message}`);
+            }
+        }
 
         function updateTerminal(message) {
             const term = document.getElementById('terminal');
@@ -260,7 +304,11 @@
             updateTerminal(">>> SYSTEM READY. STANDING BY.");
         }
 
-        document.getElementById('run-demo').addEventListener('click', runDemo);
+        // Update the event listener
+        document.getElementById('run-demo').addEventListener('click', () => {
+            if (isLive) runLive();
+            else runDemo();
+        });
     </script>
 </body>
 </html>
