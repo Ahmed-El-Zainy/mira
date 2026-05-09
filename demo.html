@@ -117,7 +117,150 @@
 
     <script>
         lucide.createIcons();
-        // Initialize scripts in Task 2
+        
+        const MOCK_DATA = {
+            "company_ticker": "TSLA",
+            "company_name": "Tesla, Inc.",
+            "analysis_summary": "Tesla continues to exhibit above-market volatility with a strong correlation to the consumer discretionary sector (0.89), suggesting macro tailwinds and headwinds affect it disproportionately. Recent news sentiment is cautiously positive (score: 0.2), driven by optimism around the Cybertruck ramp and FSD v12 rollout, partially offset by concerns around margin compression from aggressive price cuts.",
+            "sentiment_score": 0.2,
+            "market_snapshot": {
+                "price": 245.67,
+                "daily_change_pct": 1.23,
+                "market_cap": 782500000000,
+                "pe_ratio": 65.4,
+                "52w_high": 299.29,
+                "52w_low": 152.37
+            },
+            "correlation_analysis": {
+                "peer_correlations": { "RIVN": 0.78, "NIO": 0.65, "LCID": 0.52, "F": 0.41 }
+            },
+            "key_findings": [
+                "Elevated sector correlation (0.89) indicates high macro sensitivity.",
+                "Positive sentiment around FSD v12 provides a near-term catalyst.",
+                "High P/E of 65x leaves limited margin of safety for delivery misses."
+            ],
+            "citation_sources": [
+                "https://finance.yahoo.com/quote/TSLA",
+                "https://newsapi.org/v2/tesla-report"
+            ]
+        };
+
+        const MOCK_LOGS = [
+            "Handshake established. Initializing M.I.R.A. Core...",
+            "Planning: Analyzing query 'Analyse TSLA prospects'...",
+            "Ticker identified: TSLA (Tesla, Inc.)",
+            "Executing: Fetching market data via yfinance...",
+            "Retrieved price: $245.67 (+1.23%)",
+            "Executing: Scraping news articles (12 found)...",
+            "Running FinBERT sentiment analysis on news stream...",
+            "Sentiment analysis complete. Score: +0.2 (Cautiously Positive)",
+            "Executing: Calculating peer correlations (RIVN, NIO, LCID)...",
+            "Reflecting: Quality checks passed. No further research required.",
+            "Synthesising final investment report...",
+            "Report generated successfully. Porting to UI..."
+        ];
+
+        let sentimentChart = null;
+
+        function updateTerminal(message) {
+            const term = document.getElementById('terminal');
+            const div = document.createElement('div');
+            div.className = 'mb-1';
+            div.innerHTML = `<span class="opacity-30 mr-2">[${new Date().toLocaleTimeString()}]</span> ${message}`;
+            term.appendChild(div);
+            term.scrollTop = term.scrollHeight;
+        }
+
+        function initSentimentChart(score) {
+            const ctx = document.getElementById('sentimentChart').getContext('2d');
+            if (sentimentChart) sentimentChart.destroy();
+            
+            sentimentChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [Math.abs(score), 1 - Math.abs(score)],
+                        backgroundColor: [score >= 0 ? '#00ff41' : '#ff3131', '#18181b'],
+                        borderWidth: 0,
+                        circumference: 180,
+                        rotation: 270,
+                    }]
+                },
+                options: {
+                    cutout: '80%',
+                    responsive: true,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+                }
+            });
+        }
+
+        function renderReport(data) {
+            document.getElementById('dashboard-empty').classList.add('hidden');
+            const content = document.getElementById('dashboard-content');
+            content.classList.remove('hidden');
+            setTimeout(() => content.classList.add('opacity-100'), 50);
+
+            document.getElementById('company-ticker').textContent = data.company_ticker;
+            document.getElementById('company-name').textContent = data.company_name;
+            document.getElementById('price').textContent = `$${data.market_snapshot.price}`;
+            document.getElementById('daily-change').textContent = `${data.market_snapshot.daily_change_pct > 0 ? '+' : ''}${data.market_snapshot.daily_change_pct}%`;
+            document.getElementById('daily-change').className = `text-sm font-medium ${data.market_snapshot.daily_change_pct >= 0 ? 'text-green-500' : 'text-red-500'}`;
+            
+            document.getElementById('pe-ratio').textContent = `${data.market_snapshot.pe_ratio}x`;
+            document.getElementById('market-cap').textContent = `$${(data.market_snapshot.market_cap / 1e9).toFixed(1)}B`;
+            document.getElementById('range').textContent = `$${data.market_snapshot['52w_low']} - $${data.market_snapshot['52w_high']}`;
+            
+            document.getElementById('analysis-summary').textContent = data.analysis_summary;
+
+            const findings = document.getElementById('key-findings');
+            findings.innerHTML = '';
+            data.key_findings.forEach(f => {
+                const div = document.createElement('div');
+                div.className = 'flex gap-3 bg-zinc-900/30 p-3 rounded border border-zinc-800/50';
+                div.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-green-500 shrink-0 mt-1"></i><p class="text-sm">${f}</p>`;
+                findings.appendChild(div);
+            });
+
+            const corrContainer = document.getElementById('correlations');
+            corrContainer.innerHTML = '';
+            Object.entries(data.correlation_analysis.peer_correlations).forEach(([peer, val]) => {
+                const div = document.createElement('div');
+                div.className = 'bg-zinc-900/50 p-2 rounded border border-zinc-800 text-center';
+                div.innerHTML = `<p class="text-[10px] text-zinc-500 uppercase">${peer}</p><p class="font-bold text-sm">${val.toFixed(2)}</p>`;
+                corrContainer.appendChild(div);
+            });
+
+            const citations = document.getElementById('citations');
+            citations.innerHTML = '';
+            data.citation_sources.forEach(url => {
+                const a = document.createElement('a');
+                a.href = url;
+                a.target = '_blank';
+                a.className = 'block hover:text-blue-400 transition-colors truncate';
+                a.textContent = url;
+                citations.appendChild(a);
+            });
+
+            lucide.createIcons();
+            initSentimentChart(data.sentiment_score);
+        }
+
+        async function runDemo() {
+            document.getElementById('terminal').innerHTML = '';
+            document.getElementById('dashboard-content').classList.add('hidden');
+            document.getElementById('dashboard-content').classList.remove('opacity-100');
+            document.getElementById('dashboard-empty').classList.remove('hidden');
+
+            for (const log of MOCK_LOGS) {
+                updateTerminal(log);
+                await new Promise(r => setTimeout(r, 600 + Math.random() * 800));
+            }
+            
+            renderReport(MOCK_DATA);
+            updateTerminal(">>> SYSTEM READY. STANDING BY.");
+        }
+
+        document.getElementById('run-demo').addEventListener('click', runDemo);
     </script>
 </body>
 </html>
