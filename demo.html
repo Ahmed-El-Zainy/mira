@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>M.I.R.A. | Neural Core v2.0</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
@@ -30,14 +29,52 @@
   html, body { height: 100%; overflow: hidden; }
   body { background: var(--bg); color: var(--text); font-family: var(--sans); }
 
-  .terminal-font { font-family: var(--mono); }
-
   /* Scanline overlay */
   body::after {
     content: '';
     position: fixed; inset: 0; pointer-events: none; z-index: 9999;
     background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
   }
+
+  /* Command Bar */
+  #command-bar-wrap {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    width: min(680px, 90vw); z-index: 100;
+  }
+  #command-bar-glow {
+    position: absolute; inset: -2px; border-radius: 14px;
+    background: linear-gradient(90deg, var(--cyan), var(--green));
+    opacity: 0; transition: opacity 0.3s; filter: blur(8px);
+  }
+  #command-bar-inner {
+    position: relative; background: rgba(13,13,18,0.95);
+    border: 1px solid var(--border-bright); border-radius: 12px;
+    backdrop-filter: blur(20px);
+    display: flex; align-items: center; gap: 12px; padding: 0 20px;
+  }
+  #command-bar-wrap:focus-within #command-bar-glow { opacity: 0.3; }
+  #cmd-icon { font-family: var(--mono); font-size: 14px; color: var(--cyan); opacity: 0.7; }
+  #command-input {
+    flex: 1; background: none; border: none; outline: none;
+    font-family: var(--mono); font-size: 15px; color: var(--text);
+    padding: 18px 0; letter-spacing: 0.03em;
+  }
+  #command-input::placeholder { color: var(--muted); }
+  #cmd-actions { display: flex; gap: 8px; align-items: center; }
+  .cmd-btn {
+    padding: 6px 14px; border-radius: 6px; font-size: 11px; font-family: var(--mono);
+    font-weight: 700; letter-spacing: 0.08em; cursor: pointer; transition: all 0.2s;
+    border: 1px solid; text-transform: uppercase;
+  }
+  #btn-live {
+    border-color: rgba(0,255,135,0.3); color: var(--green); background: rgba(0,255,135,0.07);
+  }
+  #btn-live.active { background: rgba(0,255,135,0.15); border-color: rgba(0,255,135,0.6); }
+  #btn-live:hover { background: rgba(0,255,135,0.15); }
+  #btn-run {
+    border-color: rgba(0,212,255,0.4); color: var(--cyan); background: rgba(0,212,255,0.1);
+  }
+  #btn-run:hover { background: rgba(0,212,255,0.2); }
 
   /* Model Selector */
   #model-selector-wrap {
@@ -221,13 +258,6 @@
   /* Reflection badge */
   .reflection-wrap { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
   .ref-badge { padding: 2px 8px; border-radius: 4px; font-family: var(--mono); font-size: 9px; background: rgba(245,158,11,0.15); color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
-
-  /* Analysis active blur */
-  .analysis-active #dashboard-pane {
-    filter: blur(8px);
-    pointer-events: none;
-    transition: filter 0.5s ease;
-  }
 </style>
 </head>
 <body>
@@ -235,22 +265,31 @@
 <!-- Status Progress Bar -->
 <div id="status-bar"><div id="status-bar-fill"></div></div>
 
-<!-- Floating Command Bar -->
-<div class="fixed top-8 left-1/2 -translate-x-1/2 w-full max-w-xl z-50 px-4">
-    <div class="relative group">
-        <div class="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
-        <div class="relative flex items-center bg-black/80 border border-zinc-800 rounded-lg backdrop-blur-xl">
-            <div class="pl-4 text-zinc-500">
-                <i data-lucide="search" class="w-5 h-5"></i>
-            </div>
-            <input type="text" id="command-bar" 
-                   class="w-full bg-transparent border-none rounded-lg px-4 py-4 text-lg terminal-font focus:outline-none focus:ring-0 placeholder-zinc-600 text-white"
-                   placeholder="ANALYSE TICKER (e.g. TSLA)...">
-            <div class="pr-4 flex gap-2">
-                <button id="mode-toggle" class="px-2 py-1 rounded border border-zinc-700 text-[10px] font-bold text-zinc-500 hover:bg-zinc-800 transition-colors">LIVE: OFF</button>
-            </div>
-        </div>
+<!-- Command Bar -->
+<div id="command-bar-wrap">
+  <div id="command-bar-glow"></div>
+  <div id="command-bar-inner">
+    <span id="cmd-icon">⬡</span>
+    <input id="command-input" type="text" placeholder="ANALYSE TICKER — e.g.  TSLA  AAPL  NVDA  MSFT …" autocomplete="off" spellcheck="false">
+    <div id="cmd-actions">
+      <button class="cmd-btn" id="btn-live">● LIVE</button>
+      <button class="cmd-btn" id="btn-run">EXECUTE ↵</button>
     </div>
+  </div>
+</div>
+
+<!-- Model Selector -->
+<div id="model-selector-wrap">
+  <label>AI BACKEND</label>
+  <div class="model-row">
+    <div class="model-tab active" id="tab-ollama" onclick="switchProvider('ollama')">OLLAMA</div>
+    <div class="model-tab" id="tab-hf" onclick="switchProvider('hf')">HF CLOUD</div>
+  </div>
+  <select id="model-select" onchange="onModelChange()">
+    <!-- Populated by JS -->
+  </select>
+  <div style="margin-top:6px; font-size:10px; color: var(--muted); font-family: var(--mono);" id="provider-status">● LOCAL</div>
+  <div style="margin-top:4px; font-size:9px; font-family: var(--mono);" id="cfg-status"><span style="color:var(--muted)">● LOADING CONFIG...</span></div>
 </div>
 
 <!-- Main Layout -->
@@ -298,19 +337,19 @@
       <div class="card mb-4" id="sentiment-card">
         <div class="row mb-3">
           <div class="card-label" style="margin:0;">SENTIMENT COMPARISON</div>
-          <div id="consensus-badge" class="px-3 py-1 rounded text-[10px] font-black tracking-tighter uppercase hidden"></div>
+          <div id="consensus-badge">MATCH</div>
         </div>
         <div style="display:flex; align-items:center; gap:20px; justify-content:space-around;">
-          <div class="gauge-wrap group relative">
-            <canvas id="sentimentChartLocal" width="140" height="140"></canvas>
-            <div id="local-score-text" class="absolute inset-0 flex items-center justify-center text-xs font-bold terminal-font opacity-0 group-hover:opacity-100 transition-opacity">0.0</div>
+          <div class="gauge-wrap">
+            <canvas id="chartLocal" width="130" height="80"></canvas>
             <div class="gauge-label">LOCAL · FINBERT</div>
+            <div class="gauge-score" id="score-local">—</div>
           </div>
           <div class="gauge-divider"></div>
-          <div class="gauge-wrap group relative">
-            <canvas id="sentimentChartCloud" width="140" height="140"></canvas>
-            <div id="cloud-score-text" class="absolute inset-0 flex items-center justify-center text-xs font-bold terminal-font opacity-0 group-hover:opacity-100 transition-opacity">0.0</div>
+          <div class="gauge-wrap">
+            <canvas id="chartCloud" width="130" height="80"></canvas>
             <div class="gauge-label" id="cloud-label">HF CLOUD · FINBERT-TONE</div>
+            <div class="gauge-score" id="score-cloud">—</div>
           </div>
         </div>
       </div>
@@ -393,35 +432,68 @@
 
 <script>
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// CONFIGURATION
+// CONFIGURATION — populated from GET /config (reads .env)
+// Fallback values are used when the backend is not reachable (demo mode)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const PROVIDERS = {
-  ollama: {
-    label: 'OLLAMA (LOCAL)',
-    models: [
-      { id: 'lfm2.5-thinking:1.2b', label: 'LFM 2.5 Thinking 1.2B' },
-      { id: 'qwen3.5:4b',           label: 'Qwen 3.5 4B' },
-      { id: 'qwen3.5:latest',       label: 'Qwen 3.5 Latest' },
-      { id: 'gemma4:e2b',           label: 'Gemma 4 E2B' },
-      { id: 'mistral:7b',           label: 'Mistral 7B' },
-    ]
-  },
-  hf: {
-    label: 'HUGGING FACE CLOUD',
-    models: [
-      { id: 'mistralai/Mistral-7B-Instruct-v0.3',     label: 'Mistral 7B Instruct' },
-      { id: 'HuggingFaceH4/zephyr-7b-beta',           label: 'Zephyr 7B Beta' },
-      { id: 'mistralai/Mixtral-8x7B-Instruct-v0.1',   label: 'Mixtral 8x7B' },
-      { id: 'microsoft/Phi-3-mini-4k-instruct',        label: 'Phi-3 Mini 4K' },
-      { id: 'tiiuae/falcon-7b-instruct',               label: 'Falcon 7B Instruct' },
-    ]
-  }
+
+// PROVIDERS is built at runtime from /config; this is the offline fallback.
+const FALLBACK_PROVIDERS = {
+  ollama: { label: 'OLLAMA (LOCAL)',     models: [{ id: 'lfm2.5-thinking:1.2b', label: 'lfm2.5-thinking:1.2b' }] },
+  hf:     { label: 'HUGGING FACE CLOUD', models: [{ id: '(set HF_MODELS in .env)', label: '(set HF_MODELS in .env)' }] },
 };
 
+// Live registry — filled by loadConfig()
+let PROVIDERS = FALLBACK_PROVIDERS;
+
 let currentProvider = 'ollama';
-let currentModel = PROVIDERS.ollama.models[0].id;
-let isLive = false;
+let currentModel    = FALLBACK_PROVIDERS.ollama.models[0].id;
+let isLive          = false;
 let chartLocal = null, chartCloud = null, revenueChart = null;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// LOAD CONFIG FROM BACKEND  (GET /config)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function loadConfig() {
+  const cfgStatus = document.getElementById('cfg-status');
+  try {
+    const res = await fetch('http://localhost:8000/config', { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const cfg = await res.json();
+
+    // Build PROVIDERS from the backend response
+    // cfg shape: { llm_provider, ollama_model, ollama_models, hf_models, hf_model_id, hf_sentiment_model }
+    const ollamaModels = (cfg.ollama_models || [cfg.ollama_model]).filter(Boolean);
+    const hfModels     = (cfg.hf_models     || [cfg.hf_model_id]).filter(Boolean);
+
+    PROVIDERS = {
+      ollama: {
+        label: 'OLLAMA (LOCAL)',
+        models: ollamaModels.map(m => ({ id: m, label: m }))
+      },
+      hf: {
+        label: 'HUGGING FACE CLOUD',
+        models: hfModels.map(m => ({ id: m, label: m.split('/').pop() }))
+      }
+    };
+
+    // Set active provider to whatever .env says
+    const envProvider = cfg.llm_provider === 'huggingface' ? 'hf' : cfg.llm_provider;
+    currentProvider = (envProvider === 'hf' || envProvider === 'ollama') ? envProvider : 'ollama';
+
+    cfgStatus.innerHTML = '<span style="color:var(--green)">● CONFIG LOADED</span>';
+    termLog('ok',  `Config loaded from backend — provider: ${cfg.llm_provider}`);
+    termLog('data', `Ollama models: ${ollamaModels.join(', ') || 'none'}`);
+    termLog('hf',   `HF models: ${hfModels.join(', ') || 'none (set HF_MODELS in .env)'}`);
+  } catch (e) {
+    // Backend offline — keep fallback, show warning
+    cfgStatus.innerHTML = '<span style="color:var(--amber)">● OFFLINE — FALLBACK</span>';
+    termLog('warn', `Backend unreachable (${e.message}) — using fallback config`);
+    termLog('warn', 'Add HF_MODELS=org/model1,org/model2 to .env and restart to see real models');
+  }
+
+  // Render the selector with whatever PROVIDERS we ended up with
+  switchProvider(currentProvider);
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MOCK DATA (full, realistic)
@@ -429,9 +501,9 @@ let chartLocal = null, chartCloud = null, revenueChart = null;
 const MOCK_DATA = {
   company_ticker: "TSLA",
   company_name: "Tesla, Inc.",
-  analysis_summary: "Tesla continues to exhibit above-market volatility with strong correlation to the consumer discretionary sector (0.89), suggesting macro tailwinds and headwinds affect it disproportionately. Recent news sentiment is cautiously positive (local FinBERT: +0.21, HF Cloud FinBERT-Tone: +0.35), driven by optimism around Cybertruck production ramp and FSD v12 adoption. Margin compression from aggressive price cuts remains the primary headwind. The dual-model sentiment consensus (MATCH) reinforces confidence in the directional signal.",
+  analysis_summary: "Tesla continues to exhibit above-market volatility with strong correlation to the consumer discretionary sector (0.89), suggesting macro tailwinds and headwinds affect it disproportionately. Recent news sentiment is cautiously positive (local FinBERT: +0.21, HF Cloud FinBERT-Tone: +0.18), driven by optimism around Cybertruck production ramp and FSD v12 adoption. Margin compression from aggressive price cuts remains the primary headwind. The dual-model sentiment consensus (MATCH) reinforces confidence in the directional signal.",
   sentiment_score: 0.21,
-  hf_sentiment_score: 0.35,
+  hf_sentiment_score: 0.18,
   market_snapshot: {
     price: 245.67,
     daily_change_pct: 1.23,
@@ -482,7 +554,7 @@ const MOCK_LOGS = [
   ['data', 'Peers → RIVN:0.78  NIO:0.65  LCID:0.52  F:0.41  GM:0.38'],
   ['hf',   'STEP 4/4 — hf_sentiment — calling HF Inference API...'],
   ['hf',   'Model: yiyanghkust/finbert-tone · Input truncated to 512 tokens'],
-  ['ok',   'HF CLOUD sentiment score: +0.35 (Positive · conf: 0.84)'],
+  ['ok',   'HF CLOUD sentiment score: +0.18 (Positive · conf: 0.84)'],
   ['ok',   'CONSENSUS: MATCH ✓ (both models agree on positive direction)'],
   ['sys',  'REFLECTION: quality checks → all passed. No re-plan required.'],
   ['sys',  'SYNTHESISING final report via LLM...'],
@@ -490,9 +562,36 @@ const MOCK_LOGS = [
 ];
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PROVIDER / MODEL SWITCHER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function switchProvider(p) {
+  currentProvider = p;
+  document.getElementById('tab-ollama').classList.toggle('active', p === 'ollama');
+  document.getElementById('tab-hf').classList.toggle('active', p === 'hf');
+  const sel = document.getElementById('model-select');
+  sel.innerHTML = '';
+  PROVIDERS[p].models.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.id; opt.textContent = m.label;
+    sel.appendChild(opt);
+  });
+  currentModel = PROVIDERS[p].models[0].id;
+  const statusEl = document.getElementById('provider-status');
+  if (p === 'ollama') {
+    statusEl.innerHTML = '<span style="color:var(--cyan)">● LOCAL INFERENCE</span>';
+  } else {
+    statusEl.innerHTML = '<span style="color:#f97316">● HF CLOUD API</span>';
+  }
+}
+
+function onModelChange() {
+  currentModel = document.getElementById('model-select').value;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TERMINAL
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function updateTerminal(type, msg) {
+function termLog(type, msg) {
   const body = document.getElementById('terminal-body');
   const div = document.createElement('div');
   div.className = 't-line';
@@ -516,39 +615,28 @@ function setTermStatus(msg, color) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // GAUGE CHART
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function initSentimentChart(canvasId, score) {
+function buildGauge(canvasId, score) {
   const ctx = document.getElementById(canvasId).getContext('2d');
   const absScore = Math.min(Math.abs(score), 1);
   const color = score >= 0 ? '#00ff87' : '#ff4444';
-  
-  // Update hover text
-  const textId = canvasId === 'sentimentChartLocal' ? 'local-score-text' : 'cloud-score-text';
-  const textEl = document.getElementById(textId);
-  if (textEl) {
-    textEl.textContent = (score >= 0 ? '+' : '') + score.toFixed(2);
-    textEl.style.color = color;
-  }
-
-  return new Chart(ctx, {
+  const chart = new Chart(ctx, {
     type: 'doughnut',
     data: {
       datasets: [{
         data: [absScore, 1 - absScore],
-        backgroundColor: [color, 'rgba(255,255,255,0.05)'],
+        backgroundColor: [color, '#1a1a24'],
         borderWidth: 0,
         circumference: 180,
         rotation: 270
       }]
     },
     options: {
-      cutout: '85%',
+      cutout: '78%',
       responsive: false,
-      plugins: { 
-        legend: { display: false }, 
-        tooltip: { enabled: false } 
-      }
+      plugins: { legend: { display: false }, tooltip: { enabled: false } }
     }
   });
+  return chart;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -598,7 +686,6 @@ function buildRevenueChart(revs) {
 // RENDER REPORT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function renderReport(data) {
-  document.body.classList.remove('analysis-active');
   document.getElementById('empty-state').style.display = 'none';
   const dc = document.getElementById('dashboard-content');
   dc.classList.add('visible');
@@ -631,8 +718,16 @@ function renderReport(data) {
 
   if (chartLocal) chartLocal.destroy();
   if (chartCloud) chartCloud.destroy();
-  chartLocal = initSentimentChart('sentimentChartLocal', localScore);
-  chartCloud = initSentimentChart('sentimentChartCloud', cloudScore);
+  chartLocal = buildGauge('chartLocal', localScore);
+  chartCloud = buildGauge('chartCloud', cloudScore);
+
+  const scoreLocalEl = document.getElementById('score-local');
+  scoreLocalEl.textContent = (localScore >= 0 ? '+' : '') + localScore.toFixed(2);
+  scoreLocalEl.style.color = localScore >= 0 ? 'var(--green)' : 'var(--red)';
+
+  const scoreCloudEl = document.getElementById('score-cloud');
+  scoreCloudEl.textContent = (cloudScore >= 0 ? '+' : '') + cloudScore.toFixed(2);
+  scoreCloudEl.style.color = cloudScore >= 0 ? 'var(--green)' : 'var(--red)';
 
   // Cloud label reflects current HF model
   document.getElementById('cloud-label').textContent =
@@ -640,16 +735,11 @@ function renderReport(data) {
 
   // Consensus badge
   const badge2 = document.getElementById('consensus-badge');
-  const sameSign = (localScore > 0 && cloudScore > 0) || (localScore < 0 && cloudScore < 0);
-  
-  badge2.classList.remove('hidden');
-  if (sameSign) {
-    badge2.className = 'px-3 py-1 rounded text-[10px] font-black tracking-tighter uppercase bg-green-500/10 text-green-500';
-    badge2.textContent = 'CONSENSUS: MATCH';
-  } else {
-    badge2.className = 'px-3 py-1 rounded text-[10px] font-black tracking-tighter uppercase bg-amber-500/10 text-amber-500';
-    badge2.textContent = 'CONSENSUS: DIVERGE';
-  }
+  badge2.style.display = 'block';
+  const sameSign = (localScore >= 0) === (cloudScore >= 0);
+  badge2.textContent = sameSign ? '▲ MATCH' : '↕ DIVERGE';
+  badge2.className = sameSign ? 'match' : 'diverge';
+  badge2.id = 'consensus-badge'; // reset
 
   // Market metrics
   document.getElementById('m-pe').textContent = snap.pe_ratio ? snap.pe_ratio.toFixed(1) + 'x' : '—';
@@ -731,7 +821,6 @@ function renderReport(data) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function runDemo(query) {
   // Reset
-  document.body.classList.add('analysis-active');
   document.getElementById('terminal-body').innerHTML = '';
   document.getElementById('empty-state').style.display = 'flex';
   document.getElementById('dashboard-content').classList.remove('visible');
@@ -759,7 +848,7 @@ async function runDemo(query) {
     ['hf',   'STEP 4/4 — hf_sentiment → api-inference.huggingface.co...'],
     ['hf',   `Model: yiyanghkust/finbert-tone · Processing ${ticker} news headlines`],
     ['ok',   `HF CLOUD score: ${MOCK_DATA.hf_sentiment_score >= 0 ? '+' : ''}${MOCK_DATA.hf_sentiment_score} (conf: 0.84)`],
-    ['ok',   `CONSENSUS: ${(MOCK_DATA.sentiment_score > 0 && MOCK_DATA.hf_sentiment_score > 0) || (MOCK_DATA.sentiment_score < 0 && MOCK_DATA.hf_sentiment_score < 0) ? 'MATCH ✓' : 'DIVERGE ⚠'}`],
+    ['ok',   `CONSENSUS: ${(MOCK_DATA.sentiment_score >= 0) === (MOCK_DATA.hf_sentiment_score >= 0) ? 'MATCH ✓' : 'DIVERGE ⚠'}`],
     ['sys',  'REFLECTION: all quality checks passed.'],
     ['sys',  'SYNTHESISING final report...'],
     ['ok',   '>>> ANALYSIS COMPLETE.'],
@@ -769,7 +858,7 @@ async function runDemo(query) {
     const [type, msg] = logs[i];
     setProgress(Math.round((i / logs.length) * 95));
     await sleep(350 + Math.random() * 450);
-    updateTerminal(type, msg);
+    termLog(type, msg);
   }
 
   await sleep(300);
@@ -786,8 +875,8 @@ async function runLive(query) {
   setProgress(5);
   setTermStatus('LIVE...', 'var(--amber)');
 
-  updateTerminal('sys', `LIVE MODE · Provider: ${currentProvider.toUpperCase()} · ${currentModel}`);
-  updateTerminal('sys', `POST /analyze → "${query}"`);
+  termLog('sys', `LIVE MODE · Provider: ${currentProvider.toUpperCase()} · ${currentModel}`);
+  termLog('sys', `POST /analyze → "${query}"`);
 
   try {
     const res = await fetch('http://localhost:8000/analyze', {
@@ -797,18 +886,18 @@ async function runLive(query) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { job_id } = await res.json();
-    updateTerminal('ok', `Job accepted: ${job_id}`);
+    termLog('ok', `Job accepted: ${job_id}`);
     setProgress(15);
 
     let lastStatus = '';
     while (true) {
       await sleep(2000);
       const pollRes = await fetch(`http://localhost:8000/status/${job_id}`);
-      if (!pollRes.ok) { updateTerminal('err', 'Polling failed'); break; }
+      if (!pollRes.ok) { termLog('err', 'Polling failed'); break; }
       const jobData = await pollRes.json();
       const st = jobData.status;
       if (st !== lastStatus) {
-        updateTerminal('sys', `Status: [${st.toUpperCase()}] · Progress: ${jobData.progress}%`);
+        termLog('sys', `Status: [${st.toUpperCase()}] · Progress: ${jobData.progress}%`);
         lastStatus = st;
         setProgress(jobData.progress || 0);
       }
@@ -816,20 +905,20 @@ async function runLive(query) {
         // Attach HF mock score if backend doesn't include it
         const r = jobData.result || {};
         if (r.hf_sentiment_score === undefined) r.hf_sentiment_score = parseFloat((r.sentiment_score * (0.8 + Math.random() * 0.4)).toFixed(4));
-        updateTerminal('ok', '>>> ANALYSIS COMPLETE.');
+        termLog('ok', '>>> ANALYSIS COMPLETE.');
         renderReport(r);
         break;
       }
       if (st === 'failed') {
-        updateTerminal('err', `FAILED: ${jobData.error}`);
+        termLog('err', `FAILED: ${jobData.error}`);
         setTermStatus('ERROR', 'var(--red)');
         setProgress(0);
         break;
       }
     }
   } catch (err) {
-    updateTerminal('err', `CONNECTION FAILED: ${err.message}`);
-    updateTerminal('warn', 'Falling back to demo mode...');
+    termLog('err', `CONNECTION FAILED: ${err.message}`);
+    termLog('warn', 'Falling back to demo mode...');
     await sleep(600);
     isLive = false;
     updateLiveBtn();
@@ -841,15 +930,16 @@ async function runLive(query) {
 // EXECUTE
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function execute() {
-  const query = document.getElementById('command-bar').value.trim();
-  if (isLive) runLive(query || 'Analyse TSLA');
-  else runDemo(query || 'Analyse TSLA');
+  const raw = document.getElementById('command-input').value.trim();
+  const query = raw || 'Analyse TSLA';
+  if (isLive) runLive(query);
+  else runDemo(query);
 }
 
 function updateLiveBtn() {
-  const btn = document.getElementById('mode-toggle');
+  const btn = document.getElementById('btn-live');
   btn.classList.toggle('active', isLive);
-  btn.textContent = isLive ? 'LIVE: ON' : 'LIVE: OFF';
+  btn.textContent = isLive ? '● LIVE ON' : '● LIVE';
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -857,22 +947,23 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // EVENTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-lucide.createIcons();
-
-document.getElementById('mode-toggle').addEventListener('click', () => {
+document.getElementById('btn-live').addEventListener('click', () => {
   isLive = !isLive;
   updateLiveBtn();
 });
 
-document.getElementById('command-bar').addEventListener('keydown', e => {
+document.getElementById('btn-run').addEventListener('click', execute);
+
+document.getElementById('command-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') execute();
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // AUTO-RUN on load
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-window.addEventListener('load', () => {
-  setTimeout(() => runDemo('Analyse TSLA prospects'), 800);
+window.addEventListener('load', async () => {
+  await loadConfig();
+  setTimeout(() => runDemo('Analyse TSLA prospects'), 400);
 });
 </script>
 </body>

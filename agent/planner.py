@@ -14,6 +14,7 @@ Available tools:
   - market_data        : current price, fundamentals, revenue history
   - news_sentiment     : recent news articles + FinBERT sentiment scores
   - peer_correlation   : Pearson correlations vs S&P 500, sector ETF, peers
+  - hf_sentiment       : Compares sentiment with cloud models. Input: string (ticker or text).
 
 Respond ONLY with a valid JSON object. No explanation, no markdown fences:
 {

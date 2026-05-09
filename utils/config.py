@@ -1,25 +1,19 @@
-"""utils/config.py – centralised settings via pydantic-settings.
+"""utils/config.py – centralised settings via pydantic-settings."""
 
-dotenv loading strategy (two layers, both needed):
-  1. load_dotenv() here  – populates os.environ *before* pydantic-settings
-     reads it, so tests and scripts work regardless of cwd.
-  2. env_file in model_config – pydantic-settings secondary fallback for
-     any var that load_dotenv missed (e.g. running via `uvicorn` directly).
-
-override=False ensures real environment variables (Docker, CI secrets)
-always win over whatever is in the .env file.
-"""
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolve .env relative to this file so it works regardless of cwd.
 _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=_ENV_FILE, override=False)
+load_dotenv(dotenv_path=_ENV_FILE, override=True)
 
 
 class Settings(BaseSettings):
@@ -30,19 +24,25 @@ class Settings(BaseSettings):
     )
 
     # LLM – provider selection
-    llm_provider: str = "openai"                        # "openai" or "ollama"
+    llm_provider: str = "hf"                        # "hf", "openai", or "ollama"
     openai_api_key: str = ""
     llm_model: str = "gpt-4o"                          # used when provider=openai
+    
+    # Ollama
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "lfm2.5-thinking:1.2b"               # used when provider=ollama
+    
+    # HuggingFace
+    huggingface_token: str = ""
+    hf_token: str = "" # Alternative key name often used
+    llm_hf_model_id: str = "Qwen/Qwen2.5-Coder-32B-Instruct"
+    hf_model_id: str = "yiyanghkust/finbert-tone" # for sentiment tool
+    hf_base_url: str = "https://router.huggingface.co/v1"
+    
     max_tool_calls_per_job: int = 10
 
     # News
     news_api_key: str = ""
-
-    # HuggingFace
-    huggingface_token: str = ""
-    hf_model_id: str = "yiyanghkust/finbert-tone"
 
     # Redis
     redis_host: str = "localhost"

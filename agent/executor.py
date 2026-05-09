@@ -8,6 +8,7 @@ from storage.redis_client import RedisClient
 from tools.market_data import MarketDataTool
 from tools.news_sentiment import NewsSentimentTool
 from tools.peer_correlation import PeerCorrelationTool
+from tools.hf_sentiment import HuggingFaceSentimentTool
 from utils.config import get_settings
 from utils.agent_logger import AgentLogger
 
@@ -19,6 +20,7 @@ class Executor:
         self._market   = MarketDataTool()
         self._news     = NewsSentimentTool(_settings.news_api_key)
         self._peers    = PeerCorrelationTool()
+        self._hf       = HuggingFaceSentimentTool(_settings.huggingface_token, _settings.hf_model_id)
         self._logger   = AgentLogger()
         self._redis    = RedisClient()
 
@@ -65,6 +67,11 @@ class Executor:
                     sector = results.get("market_data", {}).get("sector")
                     output = await self._peers.execute(ticker, sector=sector)
                     results["peer_correlation"] = output
+
+                elif tool_name == "hf_sentiment":
+                    res = await self._hf.get_sentiment(company)
+                    output = {"score": res}
+                    results["hf_sentiment"] = output
 
                 else:
                     output = {"warning": f"Unknown tool '{tool_name}' – skipped."}

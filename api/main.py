@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 # This runs before any other module imports settings, so all env vars
 # are populated when pydantic-settings reads them.
 _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=_ENV_FILE, override=False)  # override=False: real env vars win
+load_dotenv(dotenv_path=_ENV_FILE, override=True)  # override=True: .env vars win
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
