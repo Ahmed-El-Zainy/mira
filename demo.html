@@ -1,321 +1,871 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mira | Ghost in the Machine</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500&family=Inter:wght@300;400;600;700&display=swap');
-        body { background-color: #0a0a0b; color: #e4e4e7; font-family: 'Inter', sans-serif; }
-        .terminal-font { font-family: 'Fira Code', monospace; }
-        .matrix-green { color: #00ff41; text-shadow: 0 0 5px rgba(0, 255, 65, 0.5); }
-        .neon-sapphire { color: #00d4ff; text-shadow: 0 0 5px rgba(0, 212, 255, 0.5); }
-        .flicker { animation: flicker 0.15s infinite; }
-        @keyframes flicker { 0% { opacity: 0.97; } 5% { opacity: 0.95; } 10% { opacity: 0.9; } 15% { opacity: 0.95; } 20% { opacity: 0.98; } 100% { opacity: 1; } }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M.I.R.A. | Neural Core v2.0</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green: #00ff87;
+    --cyan: #00d4ff;
+    --amber: #f59e0b;
+    --red: #ff4444;
+    --bg: #070709;
+    --bg2: #0d0d12;
+    --bg3: #12121a;
+    --border: rgba(255,255,255,0.07);
+    --border-bright: rgba(0,212,255,0.25);
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --mono: 'Space Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+    --display: 'Orbitron', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); }
+
+  .terminal-font { font-family: var(--mono); }
+
+  /* Scanline overlay */
+  body::after {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+  }
+
+  /* Model Selector */
+  #model-selector-wrap {
+    position: fixed; top: 20px; right: 20px; z-index: 100;
+    background: rgba(13,13,18,0.95); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; font-family: var(--mono);
+    font-size: 11px; min-width: 200px;
+  }
+  #model-selector-wrap label { color: var(--muted); display: block; margin-bottom: 6px; letter-spacing: 0.06em; }
+  .model-row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .model-tab {
+    flex: 1; padding: 5px 8px; border-radius: 5px; cursor: pointer; text-align: center;
+    border: 1px solid var(--border); color: var(--muted); transition: all 0.2s; font-size: 10px;
+  }
+  .model-tab.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,212,255,0.1); }
+  #model-select {
+    width: 100%; background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); border-radius: 5px; padding: 5px 8px;
+    font-family: var(--mono); font-size: 11px; outline: none;
+  }
+
+  /* Status Bar */
+  #status-bar {
+    position: fixed; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--bg2); z-index: 200;
+  }
+  #status-bar-fill {
+    height: 100%; background: linear-gradient(90deg, var(--cyan), var(--green));
+    width: 0%; transition: width 0.5s ease; box-shadow: 0 0 8px var(--cyan);
+  }
+
+  /* Main Layout */
+  #main-layout {
+    display: flex; height: 100vh; padding-top: 75px;
+  }
+
+  /* Terminal Pane */
+  #terminal-pane {
+    width: 38%; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; background: var(--bg);
+  }
+  #terminal-header {
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(0,0,0,0.3);
+  }
+  #terminal-header span { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.1em; }
+  #blinker { display: inline-block; width: 8px; height: 12px; background: var(--green); animation: blink 1s step-end infinite; vertical-align: middle; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #terminal-body {
+    flex: 1; overflow-y: auto; padding: 14px 16px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.8;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .t-line { margin-bottom: 2px; opacity: 0; animation: fadeIn 0.2s forwards; }
+  @keyframes fadeIn { to { opacity: 1; } }
+  .t-ts { color: var(--muted); margin-right: 8px; }
+  .t-sys { color: var(--cyan); }
+  .t-ok { color: var(--green); }
+  .t-warn { color: var(--amber); }
+  .t-err { color: var(--red); }
+  .t-data { color: #a78bfa; }
+  .t-hf { color: #f97316; }
+
+  /* Dashboard Pane */
+  #dashboard-pane {
+    flex: 1; overflow-y: auto; padding: 28px 32px;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  #dashboard-pane::-webkit-scrollbar { width: 4px; }
+  #dashboard-pane::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* Dashboard Cards */
+  .card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px;
+  }
+  .card-label {
+    font-family: var(--mono); font-size: 9px; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--muted); margin-bottom: 6px;
+  }
+
+  /* Ticker Header */
+  #ticker-header { margin-bottom: 24px; }
+  #ticker-symbol { font-family: var(--display); font-size: 48px; font-weight: 900; color: var(--cyan); line-height: 1; letter-spacing: -1px; }
+  #ticker-name { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: var(--mono); }
+  #price-block { text-align: right; }
+  #price-val { font-family: var(--display); font-size: 32px; font-weight: 700; }
+  #price-chg { font-family: var(--mono); font-size: 13px; margin-top: 2px; }
+
+  /* Dual Sentiment */
+  #sentiment-card { }
+  .gauge-wrap { text-align: center; }
+  .gauge-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; color: var(--muted); margin-top: 8px; text-transform: uppercase; }
+  .gauge-score { font-family: var(--display); font-size: 16px; font-weight: 700; margin-top: 2px; }
+  .gauge-divider { width: 1px; background: var(--border); align-self: stretch; }
+  #consensus-badge {
+    display: none; padding: 3px 10px; border-radius: 4px;
+    font-family: var(--mono); font-size: 9px; font-weight: 700; letter-spacing: 0.1em;
+  }
+  #consensus-badge.match { background: rgba(0,255,135,0.15); color: var(--green); border: 1px solid rgba(0,255,135,0.3); }
+  #consensus-badge.diverge { background: rgba(245,158,11,0.15); color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
+
+  /* Metrics Grid */
+  .metric-mini { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .metric-val { font-family: var(--display); font-size: 18px; font-weight: 700; margin-top: 4px; }
+
+  /* Heatmap */
+  .heat-cell {
+    border-radius: 6px; padding: 10px 8px; text-align: center;
+    font-family: var(--mono); transition: transform 0.15s;
+    cursor: default;
+  }
+  .heat-cell:hover { transform: scale(1.05); }
+  .heat-cell .peer { font-size: 9px; color: var(--muted); text-transform: uppercase; }
+  .heat-cell .val { font-size: 15px; font-weight: 700; margin-top: 2px; }
+
+  /* Findings */
+  .finding-item {
+    display: flex; gap: 12px; padding: 12px 14px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 8px; border-left: 3px solid var(--cyan);
+    opacity: 0; transform: translateX(-10px);
+    transition: all 0.4s ease;
+  }
+  .finding-item.visible { opacity: 1; transform: translateX(0); }
+  .finding-num { font-family: var(--display); font-size: 11px; color: var(--cyan); flex-shrink: 0; }
+  .finding-text { font-size: 13px; line-height: 1.6; color: var(--text); }
+
+  /* Analysis Summary */
+  #analysis-summary { font-size: 14px; line-height: 1.8; color: #94a3b8; }
+
+  /* Revenue Chart */
+  #revenue-chart-wrap { height: 80px; }
+
+  /* Citations */
+  .cite-link {
+    display: block; font-family: var(--mono); font-size: 10px; color: var(--muted);
+    text-decoration: none; padding: 5px 0; border-bottom: 1px solid var(--border);
+    transition: color 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .cite-link:last-child { border-bottom: none; }
+  .cite-link:hover { color: var(--cyan); }
+
+  /* Empty State */
+  #empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: calc(100vh - 100px); gap: 16px; color: var(--muted);
+  }
+  #empty-state .mira-logo { font-family: var(--display); font-size: 48px; font-weight: 900; color: var(--border-bright); letter-spacing: -2px; }
+  #empty-state p { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; }
+
+  #dashboard-content { display: none; }
+  #dashboard-content.visible { display: block; }
+
+  /* Section Label */
+  .section-label { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+
+  /* Scrollbar */
+  #terminal-body::-webkit-scrollbar { width: 4px; }
+  #terminal-body::-webkit-scrollbar-thumb { background: var(--border); }
+
+  /* HF Model indicator */
+  .hf-badge { display: inline-block; padding: 2px 6px; background: rgba(249,115,22,0.15); border: 1px solid rgba(249,115,22,0.3); border-radius: 4px; font-size: 9px; font-family: var(--mono); color: #f97316; letter-spacing: 0.06em; }
+  .ollama-badge { display: inline-block; padding: 2px 6px; background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.3); border-radius: 4px; font-size: 9px; font-family: var(--mono); color: var(--cyan); letter-spacing: 0.06em; }
+
+  /* Pulse dot */
+  .pulse-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0,255,135,0.4); } 50% { opacity: 0.8; box-shadow: 0 0 0 5px rgba(0,255,135,0); } }
+
+  /* Grid Helpers */
+  .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .g4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .space-y { display: flex; flex-direction: column; gap: 10px; }
+  .row { display: flex; align-items: center; justify-content: space-between; }
+  .mb-6 { margin-bottom: 24px; }
+  .mb-4 { margin-bottom: 16px; }
+  .mb-3 { margin-bottom: 12px; }
+
+  /* Reflection badge */
+  .reflection-wrap { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .ref-badge { padding: 2px 8px; border-radius: 4px; font-family: var(--mono); font-size: 9px; background: rgba(245,158,11,0.15); color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
+
+  /* Analysis active blur */
+  .analysis-active #dashboard-pane {
+    filter: blur(8px);
+    pointer-events: none;
+    transition: filter 0.5s ease;
+  }
+</style>
 </head>
-<body class="h-screen flex flex-col overflow-hidden">
-    <!-- Header -->
-    <header class="border-b border-zinc-800 p-4 flex justify-between items-center bg-black/50 backdrop-blur-md z-10">
-        <div class="flex items-center gap-3">
-            <div class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-            <h1 class="text-xl font-bold tracking-tighter neon-sapphire">M.I.R.A. v0.1.0</h1>
+<body>
+
+<!-- Status Progress Bar -->
+<div id="status-bar"><div id="status-bar-fill"></div></div>
+
+<!-- Floating Command Bar -->
+<div class="fixed top-8 left-1/2 -translate-x-1/2 w-full max-w-xl z-50 px-4">
+    <div class="relative group">
+        <div class="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
+        <div class="relative flex items-center bg-black/80 border border-zinc-800 rounded-lg backdrop-blur-xl">
+            <div class="pl-4 text-zinc-500">
+                <i data-lucide="search" class="w-5 h-5"></i>
+            </div>
+            <input type="text" id="command-bar" 
+                   class="w-full bg-transparent border-none rounded-lg px-4 py-4 text-lg terminal-font focus:outline-none focus:ring-0 placeholder-zinc-600 text-white"
+                   placeholder="ANALYSE TICKER (e.g. TSLA)...">
+            <div class="pr-4 flex gap-2">
+                <button id="mode-toggle" class="px-2 py-1 rounded border border-zinc-700 text-[10px] font-bold text-zinc-500 hover:bg-zinc-800 transition-colors">LIVE: OFF</button>
+            </div>
         </div>
-        <div class="flex gap-4">
-            <button id="mode-toggle" class="px-3 py-1 rounded border border-zinc-700 text-xs hover:bg-zinc-800 transition-colors">LIVE MODE: OFF</button>
-            <button id="run-demo" class="px-4 py-1 bg-blue-600 rounded text-xs font-semibold hover:bg-blue-500 transition-colors">INITIALIZE ANALYSIS</button>
+    </div>
+</div>
+
+<!-- Main Layout -->
+<div id="main-layout">
+  <!-- Terminal Pane -->
+  <section id="terminal-pane">
+    <div id="terminal-header">
+      <span>NEURAL LINK <span id="blinker"></span></span>
+      <span id="term-status" style="color:var(--green);">STANDBY</span>
+    </div>
+    <div id="terminal-body">
+      <div class="t-line"><span class="t-ts">[BOOT]</span><span class="t-sys"> M.I.R.A. Neural Core v2.0 initialized.</span></div>
+      <div class="t-line"><span class="t-ts">[SYS ]</span><span class="t-sys"> Dual-sentiment engine: LOCAL + HF CLOUD ready.</span></div>
+      <div class="t-line"><span class="t-ts">[SYS ]</span><span class="t-sys"> Enter ticker in command bar or press EXECUTE for demo.</span></div>
+    </div>
+  </section>
+
+  <!-- Dashboard Pane -->
+  <section id="dashboard-pane">
+    <!-- Empty State -->
+    <div id="empty-state">
+      <div class="mira-logo">M.I.R.A.</div>
+      <p>MARKET INTELLIGENCE &amp; RESEARCH AGENT</p>
+      <p style="margin-top:4px; font-size:10px; opacity:0.5;">NEURAL CORE v2.0 · DUAL SENTIMENT ENGINE</p>
+    </div>
+
+    <!-- Dashboard Content -->
+    <div id="dashboard-content">
+
+      <!-- Ticker Header -->
+      <div id="ticker-header" class="row mb-6">
+        <div>
+          <div id="ticker-symbol">---</div>
+          <div id="ticker-name">---</div>
+          <div id="model-used-badge" style="margin-top:6px;"></div>
         </div>
-    </header>
+        <div id="price-block">
+          <div id="price-val">---</div>
+          <div id="price-chg">---</div>
+          <div id="gen-time" style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:4px;"></div>
+        </div>
+      </div>
 
-    <!-- Main Content -->
-    <main class="flex-1 flex overflow-hidden">
-        <!-- Left Pane: Neural Link -->
-        <section class="w-[40%] border-r border-zinc-800 bg-black/30 flex flex-col">
-            <div class="p-2 border-b border-zinc-800 bg-zinc-900/50 flex justify-between items-center">
-                <span class="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-2">Neural Link Logs</span>
-                <i data-lucide="cpu" class="w-3 h-3 text-zinc-500"></i>
-            </div>
-            <div id="terminal" class="flex-1 p-4 terminal-font text-sm overflow-y-auto matrix-green flicker">
-                <div class="mb-1 opacity-50">> System initialized. Waiting for handshake...</div>
-            </div>
-        </section>
+      <!-- Dual Sentiment Gauges -->
+      <div class="card mb-4" id="sentiment-card">
+        <div class="row mb-3">
+          <div class="card-label" style="margin:0;">SENTIMENT COMPARISON</div>
+          <div id="consensus-badge">MATCH</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:20px; justify-content:space-around;">
+          <div class="gauge-wrap">
+            <canvas id="chartLocal" width="130" height="80"></canvas>
+            <div class="gauge-label">LOCAL · FINBERT</div>
+            <div class="gauge-score" id="score-local">—</div>
+          </div>
+          <div class="gauge-divider"></div>
+          <div class="gauge-wrap">
+            <canvas id="chartCloud" width="130" height="80"></canvas>
+            <div class="gauge-label" id="cloud-label">HF CLOUD · FINBERT-TONE</div>
+            <div class="gauge-score" id="score-cloud">—</div>
+          </div>
+        </div>
+      </div>
 
-        <!-- Right Pane: Analyst Output -->
-        <section class="w-[60%] overflow-y-auto p-8 relative">
-            <div id="dashboard-empty" class="absolute inset-0 flex flex-col items-center justify-center text-zinc-600 bg-black/40 z-0">
-                <i data-lucide="database" class="w-12 h-12 mb-4 opacity-20"></i>
-                <p class="text-sm font-medium">AWAITING SYNTHESIS...</p>
-            </div>
-            <div id="dashboard-content" class="hidden space-y-8 opacity-0 transition-opacity duration-1000">
-                <!-- Ticker Header -->
-                <div class="flex justify-between items-end border-b border-zinc-800 pb-6">
-                    <div>
-                        <h2 id="company-ticker" class="text-5xl font-black neon-sapphire tracking-tighter">---</h2>
-                        <p id="company-name" class="text-zinc-400 font-medium">---</p>
-                    </div>
-                    <div class="text-right">
-                        <div id="price" class="text-4xl font-bold tracking-tight">---</div>
-                        <div id="daily-change" class="text-sm font-medium">---</div>
-                    </div>
-                </div>
+      <!-- Market Snapshot -->
+      <div class="mb-4">
+        <div class="section-label">MARKET SNAPSHOT</div>
+        <div class="g4">
+          <div class="metric-mini">
+            <div class="card-label">P/E RATIO</div>
+            <div class="metric-val" id="m-pe">—</div>
+          </div>
+          <div class="metric-mini">
+            <div class="card-label">MARKET CAP</div>
+            <div class="metric-val" id="m-cap">—</div>
+          </div>
+          <div class="metric-mini">
+            <div class="card-label">52W HIGH</div>
+            <div class="metric-val" id="m-high">—</div>
+          </div>
+          <div class="metric-mini">
+            <div class="card-label">52W LOW</div>
+            <div class="metric-val" id="m-low">—</div>
+          </div>
+        </div>
+      </div>
 
-                <!-- Metrics Grid -->
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="bg-zinc-900/50 p-4 border border-zinc-800 rounded-lg">
-                        <p class="text-[10px] uppercase text-zinc-500 mb-1">Sentiment Score</p>
-                        <canvas id="sentimentChart" height="150"></canvas>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="bg-zinc-900/50 p-4 border border-zinc-800 rounded-lg flex flex-col justify-center">
-                            <p class="text-[10px] uppercase text-zinc-500 mb-1">P/E Ratio</p>
-                            <p id="pe-ratio" class="text-xl font-bold">---</p>
-                        </div>
-                        <div class="bg-zinc-900/50 p-4 border border-zinc-800 rounded-lg flex flex-col justify-center">
-                            <p class="text-[10px] uppercase text-zinc-500 mb-1">Market Cap</p>
-                            <p id="market-cap" class="text-xl font-bold">---</p>
-                        </div>
-                        <div class="bg-zinc-900/50 p-4 border border-zinc-800 rounded-lg flex flex-col justify-center">
-                            <p class="text-[10px] uppercase text-zinc-500 mb-1">52W Range</p>
-                            <p id="range" class="text-sm font-semibold">---</p>
-                        </div>
-                        <div class="bg-zinc-900/50 p-4 border border-zinc-800 rounded-lg flex flex-col justify-center">
-                            <p class="text-[10px] uppercase text-zinc-500 mb-1">Status</p>
-                            <span class="text-green-500 text-xs font-bold flex items-center gap-1"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span> NOMINAL</span>
-                        </div>
-                    </div>
-                </div>
+      <!-- Revenue Sparkline -->
+      <div class="card mb-4">
+        <div class="row mb-3">
+          <div class="card-label" style="margin:0;">QUARTERLY REVENUE</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);" id="rev-delta"></div>
+        </div>
+        <div id="revenue-chart-wrap"><canvas id="revenueChart"></canvas></div>
+      </div>
 
-                <!-- Summary Section -->
-                <div>
-                    <h3 class="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-widest">Analysis Summary</h3>
-                    <p id="analysis-summary" class="text-lg leading-relaxed text-zinc-200"></p>
-                </div>
+      <!-- Peer Correlations Heatmap -->
+      <div class="mb-4">
+        <div class="section-label">PEER CORRELATION HEATMAP</div>
+        <div id="corr-grid" class="g4"></div>
+      </div>
 
-                <!-- Key Findings -->
-                <div class="space-y-4">
-                    <h3 class="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-widest">Key Findings</h3>
-                    <div id="key-findings" class="space-y-2"></div>
-                </div>
+      <!-- Analysis Summary -->
+      <div class="card mb-4">
+        <div class="section-label">SYNTHESIS SUMMARY</div>
+        <p id="analysis-summary">Awaiting synthesis...</p>
+        <div id="reflection-wrap" class="reflection-wrap" style="display:none;"></div>
+      </div>
 
-                <!-- Correlations -->
-                <div>
-                    <h3 class="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-widest">Peer Correlations</h3>
-                    <div id="correlations" class="grid grid-cols-4 gap-2"></div>
-                </div>
+      <!-- Key Findings -->
+      <div class="mb-4">
+        <div class="section-label">KEY FINDINGS</div>
+        <div id="key-findings" class="space-y"></div>
+      </div>
 
-                <!-- Citations -->
-                <div class="border-t border-zinc-800 pt-6">
-                    <h3 class="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-widest">Citations</h3>
-                    <div id="citations" class="space-y-1 text-xs text-zinc-500"></div>
-                </div>
-            </div>
-        </section>
-    </main>
+      <!-- Sector + Correlations Detail -->
+      <div class="g2 mb-4">
+        <div class="card">
+          <div class="card-label">SECTOR CORRELATION</div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-top:4px;">
+            <div style="font-family:var(--display);font-size:24px;font-weight:700;" id="sect-corr">—</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--muted);" id="sect-etf">—</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">MARKET (S&P500)</div>
+          <div style="font-family:var(--display);font-size:24px;font-weight:700;margin-top:4px;" id="mkt-corr">—</div>
+        </div>
+      </div>
 
-    <script>
-        lucide.createIcons();
-        
-        const MOCK_DATA = {
-            "company_ticker": "TSLA",
-            "company_name": "Tesla, Inc.",
-            "analysis_summary": "Tesla continues to exhibit above-market volatility with a strong correlation to the consumer discretionary sector (0.89), suggesting macro tailwinds and headwinds affect it disproportionately. Recent news sentiment is cautiously positive (score: 0.2), driven by optimism around the Cybertruck ramp and FSD v12 rollout, partially offset by concerns around margin compression from aggressive price cuts.",
-            "sentiment_score": 0.2,
-            "market_snapshot": {
-                "price": 245.67,
-                "daily_change_pct": 1.23,
-                "market_cap": 782500000000,
-                "pe_ratio": 65.4,
-                "52w_high": 299.29,
-                "52w_low": 152.37
-            },
-            "correlation_analysis": {
-                "peer_correlations": { "RIVN": 0.78, "NIO": 0.65, "LCID": 0.52, "F": 0.41 }
-            },
-            "key_findings": [
-                "Elevated sector correlation (0.89) indicates high macro sensitivity.",
-                "Positive sentiment around FSD v12 provides a near-term catalyst.",
-                "High P/E of 65x leaves limited margin of safety for delivery misses."
-            ],
-            "citation_sources": [
-                "https://finance.yahoo.com/quote/TSLA",
-                "https://newsapi.org/v2/tesla-report"
-            ]
-        };
+      <!-- Citations -->
+      <div class="card mb-4">
+        <div class="section-label">SOURCES &amp; CITATIONS</div>
+        <div id="citations"></div>
+      </div>
 
-        const MOCK_LOGS = [
-            "Handshake established. Initializing M.I.R.A. Core...",
-            "Planning: Analyzing query 'Analyse TSLA prospects'...",
-            "Ticker identified: TSLA (Tesla, Inc.)",
-            "Executing: Fetching market data via yfinance...",
-            "Retrieved price: $245.67 (+1.23%)",
-            "Executing: Scraping news articles (12 found)...",
-            "Running FinBERT sentiment analysis on news stream...",
-            "Sentiment analysis complete. Score: +0.2 (Cautiously Positive)",
-            "Executing: Calculating peer correlations (RIVN, NIO, LCID)...",
-            "Reflecting: Quality checks passed. No further research required.",
-            "Synthesising final investment report...",
-            "Report generated successfully. Porting to UI..."
-        ];
+    </div><!-- /dashboard-content -->
+  </section>
+</div><!-- /main-layout -->
 
-        let sentimentChart = null;
-        let isLive = false;
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CONFIGURATION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const PROVIDERS = {
+  ollama: {
+    label: 'OLLAMA (LOCAL)',
+    models: [
+      { id: 'lfm2.5-thinking:1.2b', label: 'LFM 2.5 Thinking 1.2B' },
+      { id: 'qwen3.5:4b',           label: 'Qwen 3.5 4B' },
+      { id: 'qwen3.5:latest',       label: 'Qwen 3.5 Latest' },
+      { id: 'gemma4:e2b',           label: 'Gemma 4 E2B' },
+      { id: 'mistral:7b',           label: 'Mistral 7B' },
+    ]
+  },
+  hf: {
+    label: 'HUGGING FACE CLOUD',
+    models: [
+      { id: 'mistralai/Mistral-7B-Instruct-v0.3',     label: 'Mistral 7B Instruct' },
+      { id: 'HuggingFaceH4/zephyr-7b-beta',           label: 'Zephyr 7B Beta' },
+      { id: 'mistralai/Mixtral-8x7B-Instruct-v0.1',   label: 'Mixtral 8x7B' },
+      { id: 'microsoft/Phi-3-mini-4k-instruct',        label: 'Phi-3 Mini 4K' },
+      { id: 'tiiuae/falcon-7b-instruct',               label: 'Falcon 7B Instruct' },
+    ]
+  }
+};
 
-        document.getElementById('mode-toggle').addEventListener('click', () => {
-            isLive = !isLive;
-            const btn = document.getElementById('mode-toggle');
-            btn.textContent = `LIVE MODE: ${isLive ? 'ON' : 'OFF'}`;
-            btn.className = `px-3 py-1 rounded border text-xs transition-colors ${isLive ? 'bg-green-900/20 border-green-500 text-green-500' : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'}`;
-        });
+let currentProvider = 'ollama';
+let currentModel = PROVIDERS.ollama.models[0].id;
+let isLive = false;
+let chartLocal = null, chartCloud = null, revenueChart = null;
 
-        async function runLive() {
-            const query = prompt("Enter ticker or query:", "Analyse TSLA");
-            if (!query) return;
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MOCK DATA (full, realistic)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const MOCK_DATA = {
+  company_ticker: "TSLA",
+  company_name: "Tesla, Inc.",
+  analysis_summary: "Tesla continues to exhibit above-market volatility with strong correlation to the consumer discretionary sector (0.89), suggesting macro tailwinds and headwinds affect it disproportionately. Recent news sentiment is cautiously positive (local FinBERT: +0.21, HF Cloud FinBERT-Tone: +0.18), driven by optimism around Cybertruck production ramp and FSD v12 adoption. Margin compression from aggressive price cuts remains the primary headwind. The dual-model sentiment consensus (MATCH) reinforces confidence in the directional signal.",
+  sentiment_score: 0.21,
+  hf_sentiment_score: 0.18,
+  market_snapshot: {
+    price: 245.67,
+    daily_change_pct: 1.23,
+    market_cap: 782500000000,
+    pe_ratio: 65.4,
+    "52w_high": 299.29,
+    "52w_low": 152.37,
+    quarterly_revenues: [25170000000, 23350000000, 21301000000, 19963000000]
+  },
+  correlation_analysis: {
+    market_correlation: 0.72,
+    sector_etf: "XLY",
+    sector_correlation: 0.89,
+    peer_correlations: { "RIVN": 0.78, "NIO": 0.65, "LCID": 0.52, "F": 0.41, "GM": 0.38 },
+    all_correlations: { "TSLA": 1.0, "RIVN": 0.78, "NIO": 0.65, "LCID": 0.52, "F": 0.41, "GM": 0.38, "^GSPC": 0.72, "XLY": 0.89 }
+  },
+  key_findings: [
+    "Tesla's elevated sector correlation (0.89) means near-term price action will likely track broader consumer discretionary moves; position sizing should account for macro sensitivity beyond company fundamentals.",
+    "Dual-model sentiment MATCH (Local: +0.21, HF Cloud: +0.18) around FSD v12 adoption confirms signal reliability — a convergent positive read across independent models reduces false-positive risk.",
+    "Stock trading at ~82% of 52-week high with no abnormal volume signal; a confirmed break above $260 on elevated volume would signal trend resumption with momentum support."
+  ],
+  reflection: { triggers_fired: [], reasoning: "All quality checks passed — sector correlation below 0.95, news is fresh, sentiment is non-neutral." },
+  tools_used: ["market_data", "news_sentiment", "peer_correlation", "hf_sentiment"],
+  citation_sources: [
+    "https://finance.yahoo.com/quote/TSLA",
+    "https://www.reuters.com/business/autos-transportation/tesla-fsd-v12-deployment/",
+    "https://www.bloomberg.com/news/articles/tesla-cybertruck-production-ramp",
+    "https://newsapi.org/v2/everything?q=Tesla&sortBy=publishedAt",
+    "https://api-inference.huggingface.co/models/yiyanghkust/finbert-tone"
+  ],
+  generated_at: new Date().toISOString()
+};
 
-            try {
-                updateTerminal(">>> INITIALIZING LIVE SESSION...");
-                const res = await fetch('http://localhost:8000/analyze', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query })
-                });
-                const { job_id } = await res.json();
-                updateTerminal(`Job ID: ${job_id}. Polling state...`);
+const MOCK_LOGS = [
+  ['sys',  'Handshake established. M.I.R.A. Neural Core online.'],
+  ['sys',  'Provider: ' + currentProvider.toUpperCase() + ' · Model: ' + currentModel],
+  ['sys',  'Parsing query → ticker identified: TSLA (Tesla, Inc.)'],
+  ['ok',   'PLAN generated: [market_data] → [news_sentiment] → [peer_correlation] → [hf_sentiment]'],
+  ['sys',  'STEP 1/4 — market_data tool executing via yfinance...'],
+  ['data', 'Price: $245.67 (+1.23%) · MCap: $782.5B · P/E: 65.4x'],
+  ['data', '52W Range: $152.37 — $299.29 · Volume: 94.2M'],
+  ['sys',  'STEP 2/4 — news_sentiment (FinBERT local) — scraping NewsAPI...'],
+  ['data', '12 articles retrieved · FinBERT processing...'],
+  ['ok',   'LOCAL sentiment score: +0.21 (Cautiously Positive)'],
+  ['data', 'Distribution: Positive: 7 · Neutral: 3 · Negative: 2'],
+  ['sys',  'STEP 3/4 — peer_correlation — fetching 1Y returns (yfinance)...'],
+  ['data', 'Sector ETF: XLY · Correlation: 0.89 · Market (GSPC): 0.72'],
+  ['data', 'Peers → RIVN:0.78  NIO:0.65  LCID:0.52  F:0.41  GM:0.38'],
+  ['hf',   'STEP 4/4 — hf_sentiment — calling HF Inference API...'],
+  ['hf',   'Model: yiyanghkust/finbert-tone · Input truncated to 512 tokens'],
+  ['ok',   'HF CLOUD sentiment score: +0.18 (Positive · conf: 0.84)'],
+  ['ok',   'CONSENSUS: MATCH ✓ (both models agree on positive direction)'],
+  ['sys',  'REFLECTION: quality checks → all passed. No re-plan required.'],
+  ['sys',  'SYNTHESISING final report via LLM...'],
+  ['ok',   '>>> ANALYSIS COMPLETE. Report rendered below.'],
+];
 
-                let status = 'queued';
-                while (status !== 'completed' && status !== 'failed') {
-                    const pollRes = await fetch(`http://localhost:8000/status/${job_id}`);
-                    const jobData = await pollRes.json();
-                    status = jobData.status;
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// TERMINAL
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function updateTerminal(type, msg) {
+  const body = document.getElementById('terminal-body');
+  const div = document.createElement('div');
+  div.className = 't-line';
+  const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const typeMap = { sys:'t-sys', ok:'t-ok', warn:'t-warn', err:'t-err', data:'t-data', hf:'t-hf' };
+  div.innerHTML = `<span class="t-ts">[${ts}]</span> <span class="${typeMap[type]||'t-sys'}">${msg}</span>`;
+  body.appendChild(div);
+  body.scrollTop = body.scrollHeight;
+}
 
-                    updateTerminal(`State: [${status.toUpperCase()}] | Progress: ${jobData.progress}%`);
-                    
-                    if (status === 'completed') {
-                        renderReport(jobData.result);
-                        updateTerminal(">>> ANALYSIS COMPLETE.");
-                    } else if (status === 'failed') {
-                        updateTerminal(`!!! ERROR: ${jobData.error}`);
-                    }
-                    
-                    await new Promise(r => setTimeout(r, 2000));
-                }
-            } catch (err) {
-                updateTerminal(`!!! CONNECTION FAILED: ${err.message}`);
-            }
-        }
+function setProgress(pct) {
+  document.getElementById('status-bar-fill').style.width = pct + '%';
+}
 
-        function updateTerminal(message) {
-            const term = document.getElementById('terminal');
-            const div = document.createElement('div');
-            div.className = 'mb-1';
-            div.innerHTML = `<span class="opacity-30 mr-2">[${new Date().toLocaleTimeString()}]</span> ${message}`;
-            term.appendChild(div);
-            term.scrollTop = term.scrollHeight;
-        }
+function setTermStatus(msg, color) {
+  const el = document.getElementById('term-status');
+  el.textContent = msg;
+  el.style.color = color || 'var(--green)';
+}
 
-        function initSentimentChart(score) {
-            const ctx = document.getElementById('sentimentChart').getContext('2d');
-            if (sentimentChart) sentimentChart.destroy();
-            
-            sentimentChart = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    datasets: [{
-                        data: [Math.abs(score), 1 - Math.abs(score)],
-                        backgroundColor: [score >= 0 ? '#00ff41' : '#ff3131', '#18181b'],
-                        borderWidth: 0,
-                        circumference: 180,
-                        rotation: 270,
-                    }]
-                },
-                options: {
-                    cutout: '80%',
-                    responsive: true,
-                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
-                }
-            });
-        }
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// GAUGE CHART
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function buildGauge(canvasId, score) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  const absScore = Math.min(Math.abs(score), 1);
+  const color = score >= 0 ? '#00ff87' : '#ff4444';
+  const chart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [absScore, 1 - absScore],
+        backgroundColor: [color, '#1a1a24'],
+        borderWidth: 0,
+        circumference: 180,
+        rotation: 270
+      }]
+    },
+    options: {
+      cutout: '78%',
+      responsive: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } }
+    }
+  });
+  return chart;
+}
 
-        function renderReport(data) {
-            document.getElementById('dashboard-empty').classList.add('hidden');
-            const content = document.getElementById('dashboard-content');
-            content.classList.remove('hidden');
-            setTimeout(() => content.classList.add('opacity-100'), 50);
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CORRELATION HEATMAP
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function corrColor(v) {
+  if (v >= 0.8)  return { bg: 'rgba(0,255,135,0.2)',  text: '#00ff87' };
+  if (v >= 0.6)  return { bg: 'rgba(0,212,255,0.15)', text: '#00d4ff' };
+  if (v >= 0.4)  return { bg: 'rgba(245,158,11,0.15)',text: '#f59e0b' };
+  return              { bg: 'rgba(255,68,68,0.15)',  text: '#ff6666' };
+}
 
-            document.getElementById('company-ticker').textContent = data.company_ticker;
-            document.getElementById('company-name').textContent = data.company_name;
-            document.getElementById('price').textContent = `$${data.market_snapshot.price}`;
-            document.getElementById('daily-change').textContent = `${data.market_snapshot.daily_change_pct > 0 ? '+' : ''}${data.market_snapshot.daily_change_pct}%`;
-            document.getElementById('daily-change').className = `text-sm font-medium ${data.market_snapshot.daily_change_pct >= 0 ? 'text-green-500' : 'text-red-500'}`;
-            
-            document.getElementById('pe-ratio').textContent = `${data.market_snapshot.pe_ratio}x`;
-            document.getElementById('market-cap').textContent = `$${(data.market_snapshot.market_cap / 1e9).toFixed(1)}B`;
-            document.getElementById('range').textContent = `$${data.market_snapshot['52w_low']} - $${data.market_snapshot['52w_high']}`;
-            
-            document.getElementById('analysis-summary').textContent = data.analysis_summary;
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// REVENUE SPARKLINE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function buildRevenueChart(revs) {
+  const ctx = document.getElementById('revenueChart').getContext('2d');
+  if (revenueChart) revenueChart.destroy();
+  const labels = revs.map((_, i) => `Q${revs.length - i}`).reverse();
+  const data = [...revs].reverse();
+  revenueChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data: data.map(v => v / 1e9),
+        backgroundColor: data.map((v, i) => i === data.length - 1 ? 'rgba(0,212,255,0.6)' : 'rgba(0,212,255,0.2)'),
+        borderRadius: 4, borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => `$${ctx.parsed.y.toFixed(2)}B` },
+        backgroundColor: '#1a1a24', titleColor: '#00d4ff', bodyColor: '#e2e8f0',
+        borderColor: '#1e293b', borderWidth: 1
+      }},
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#64748b', font: { family: "'Space Mono'" , size: 9 } } },
+        y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b', font: { family: "'Space Mono'", size: 9 }, callback: v => '$' + v.toFixed(0) + 'B' } }
+      }
+    }
+  });
+}
 
-            const findings = document.getElementById('key-findings');
-            findings.innerHTML = '';
-            data.key_findings.forEach(f => {
-                const div = document.createElement('div');
-                div.className = 'flex gap-3 bg-zinc-900/30 p-3 rounded border border-zinc-800/50';
-                div.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-green-500 shrink-0 mt-1"></i><p class="text-sm">${f}</p>`;
-                findings.appendChild(div);
-            });
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// RENDER REPORT
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function renderReport(data) {
+  document.body.classList.remove('analysis-active');
+  document.getElementById('empty-state').style.display = 'none';
+  const dc = document.getElementById('dashboard-content');
+  dc.classList.add('visible');
 
-            const corrContainer = document.getElementById('correlations');
-            corrContainer.innerHTML = '';
-            Object.entries(data.correlation_analysis.peer_correlations).forEach(([peer, val]) => {
-                const div = document.createElement('div');
-                div.className = 'bg-zinc-900/50 p-2 rounded border border-zinc-800 text-center';
-                div.innerHTML = `<p class="text-[10px] text-zinc-500 uppercase">${peer}</p><p class="font-bold text-sm">${val.toFixed(2)}</p>`;
-                corrContainer.appendChild(div);
-            });
+  // Ticker header
+  document.getElementById('ticker-symbol').textContent = data.company_ticker || '---';
+  document.getElementById('ticker-name').textContent = data.company_name || '---';
 
-            const citations = document.getElementById('citations');
-            citations.innerHTML = '';
-            data.citation_sources.forEach(url => {
-                const a = document.createElement('a');
-                a.href = url;
-                a.target = '_blank';
-                a.className = 'block hover:text-blue-400 transition-colors truncate';
-                a.textContent = url;
-                citations.appendChild(a);
-            });
+  // Model badge
+  const badge = document.getElementById('model-used-badge');
+  badge.innerHTML = currentProvider === 'hf'
+    ? `<span class="hf-badge">HF CLOUD · ${currentModel.split('/').pop()}</span>`
+    : `<span class="ollama-badge">OLLAMA · ${currentModel}</span>`;
 
-            lucide.createIcons();
-            initSentimentChart(data.sentiment_score);
-        }
+  // Price
+  const snap = data.market_snapshot || {};
+  const price = snap.price;
+  document.getElementById('price-val').textContent = price ? `$${price.toFixed(2)}` : '---';
+  const chg = snap.daily_change_pct;
+  const chgEl = document.getElementById('price-chg');
+  if (chg !== null && chg !== undefined) {
+    chgEl.textContent = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+    chgEl.style.color = chg >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+  document.getElementById('gen-time').textContent = data.generated_at ? new Date(data.generated_at).toLocaleString() : '';
 
-        async function runDemo() {
-            document.getElementById('terminal').innerHTML = '';
-            document.getElementById('dashboard-content').classList.add('hidden');
-            document.getElementById('dashboard-content').classList.remove('opacity-100');
-            document.getElementById('dashboard-empty').classList.remove('hidden');
+  // Dual sentiment gauges
+  const localScore = data.sentiment_score ?? 0;
+  const cloudScore = data.hf_sentiment_score ?? 0;
 
-            for (const log of MOCK_LOGS) {
-                updateTerminal(log);
-                await new Promise(r => setTimeout(r, 600 + Math.random() * 800));
-            }
-            
-            renderReport(MOCK_DATA);
-            updateTerminal(">>> SYSTEM READY. STANDING BY.");
-        }
+  if (chartLocal) chartLocal.destroy();
+  if (chartCloud) chartCloud.destroy();
+  chartLocal = buildGauge('chartLocal', localScore);
+  chartCloud = buildGauge('chartCloud', cloudScore);
 
-        // Update the event listener
-        document.getElementById('run-demo').addEventListener('click', () => {
-            if (isLive) runLive();
-            else runDemo();
-        });
+  const scoreLocalEl = document.getElementById('score-local');
+  scoreLocalEl.textContent = (localScore >= 0 ? '+' : '') + localScore.toFixed(2);
+  scoreLocalEl.style.color = localScore >= 0 ? 'var(--green)' : 'var(--red)';
 
-        // AUTO-RUN on load
-        window.onload = () => {
-            console.log("M.I.R.A. Dashboard Initialized.");
-            // Short delay for the "loading" feel
-            setTimeout(runDemo, 1000);
-        };
-    </script>
+  const scoreCloudEl = document.getElementById('score-cloud');
+  scoreCloudEl.textContent = (cloudScore >= 0 ? '+' : '') + cloudScore.toFixed(2);
+  scoreCloudEl.style.color = cloudScore >= 0 ? 'var(--green)' : 'var(--red)';
+
+  // Cloud label reflects current HF model
+  document.getElementById('cloud-label').textContent =
+    currentProvider === 'hf' ? `HF CLOUD · ${currentModel.split('/').pop().substring(0,15).toUpperCase()}` : 'HF CLOUD · FINBERT-TONE';
+
+  // Consensus badge
+  const badge2 = document.getElementById('consensus-badge');
+  badge2.style.display = 'block';
+  const sameSign = (localScore >= 0) === (cloudScore >= 0);
+  badge2.textContent = sameSign ? '▲ MATCH' : '↕ DIVERGE';
+  badge2.className = sameSign ? 'match' : 'diverge';
+  badge2.id = 'consensus-badge'; // reset
+
+  // Market metrics
+  document.getElementById('m-pe').textContent = snap.pe_ratio ? snap.pe_ratio.toFixed(1) + 'x' : '—';
+  const cap = snap.market_cap;
+  document.getElementById('m-cap').textContent = cap ? (cap >= 1e12 ? `$${(cap/1e12).toFixed(2)}T` : `$${(cap/1e9).toFixed(1)}B`) : '—';
+  document.getElementById('m-high').textContent = snap['52w_high'] ? `$${snap['52w_high'].toFixed(2)}` : '—';
+  document.getElementById('m-low').textContent  = snap['52w_low']  ? `$${snap['52w_low'].toFixed(2)}`  : '—';
+
+  // Revenue sparkline
+  const revs = snap.quarterly_revenues || [];
+  if (revs.length >= 2) {
+    const revChg = ((revs[0] - revs[1]) / revs[1] * 100).toFixed(1);
+    document.getElementById('rev-delta').textContent = (revChg >= 0 ? '▲ +' : '▼ ') + revChg + '% QoQ';
+    document.getElementById('rev-delta').style.color = revChg >= 0 ? 'var(--green)' : 'var(--red)';
+    buildRevenueChart(revs);
+  }
+
+  // Correlation heatmap
+  const corrGrid = document.getElementById('corr-grid');
+  corrGrid.innerHTML = '';
+  const peers = (data.correlation_analysis || {}).peer_correlations || {};
+  Object.entries(peers).forEach(([ticker, val]) => {
+    const c = corrColor(val);
+    const cell = document.createElement('div');
+    cell.className = 'heat-cell';
+    cell.style.background = c.bg;
+    cell.innerHTML = `<div class="peer">${ticker}</div><div class="val" style="color:${c.text}">${val.toFixed(2)}</div>`;
+    corrGrid.appendChild(cell);
+  });
+
+  // Sector / market corr
+  const ca = data.correlation_analysis || {};
+  const sectCorrEl = document.getElementById('sect-corr');
+  sectCorrEl.textContent = ca.sector_correlation != null ? ca.sector_correlation.toFixed(2) : '—';
+  sectCorrEl.style.color = ca.sector_correlation >= 0.85 ? 'var(--amber)' : 'var(--cyan)';
+  document.getElementById('sect-etf').textContent = ca.sector_etf || '—';
+  const mktCorrEl = document.getElementById('mkt-corr');
+  mktCorrEl.textContent = ca.market_correlation != null ? ca.market_correlation.toFixed(2) : '—';
+
+  // Analysis summary
+  document.getElementById('analysis-summary').textContent = data.analysis_summary || '';
+
+  // Reflection triggers
+  const refWrap = document.getElementById('reflection-wrap');
+  const triggers = (data.reflection || {}).triggers_fired || [];
+  if (triggers.length > 0) {
+    refWrap.style.display = 'flex';
+    refWrap.innerHTML = triggers.map(t => `<span class="ref-badge">⚡ ${t}</span>`).join('');
+  } else {
+    refWrap.style.display = 'none';
+  }
+
+  // Key Findings (typewriter-style stagger)
+  const findingsEl = document.getElementById('key-findings');
+  findingsEl.innerHTML = '';
+  (data.key_findings || []).forEach((f, i) => {
+    const div = document.createElement('div');
+    div.className = 'finding-item';
+    div.innerHTML = `<div class="finding-num">${String(i+1).padStart(2,'0')}</div><div class="finding-text">${f}</div>`;
+    findingsEl.appendChild(div);
+    setTimeout(() => div.classList.add('visible'), 300 + i * 200);
+  });
+
+  // Citations
+  const citeEl = document.getElementById('citations');
+  citeEl.innerHTML = '';
+  (data.citation_sources || []).forEach(url => {
+    const a = document.createElement('a');
+    a.className = 'cite-link'; a.href = url; a.target = '_blank'; a.textContent = url;
+    citeEl.appendChild(a);
+  });
+
+  setProgress(100);
+  setTermStatus('COMPLETE', 'var(--green)');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DEMO MODE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function runDemo(query) {
+  // Reset
+  document.body.classList.add('analysis-active');
+  document.getElementById('terminal-body').innerHTML = '';
+  document.getElementById('empty-state').style.display = 'flex';
+  document.getElementById('dashboard-content').classList.remove('visible');
+  setProgress(0);
+  setTermStatus('RUNNING...', 'var(--amber)');
+
+  const ticker = (query || 'TSLA').toUpperCase().trim();
+  // Patch mock data with queried ticker
+  MOCK_DATA.company_ticker = ticker;
+  MOCK_DATA.generated_at = new Date().toISOString();
+
+  const logs = [
+    ['sys',  `Handshake established. Provider: ${currentProvider.toUpperCase()}`],
+    ['sys',  `Model: ${currentModel}`],
+    ['sys',  `Query: "${query || 'Analyse TSLA'}" → Ticker: ${ticker}`],
+    ['ok',   `PLAN: market_data → news_sentiment → peer_correlation → hf_sentiment`],
+    ['sys',  'STEP 1/4 — market_data (yfinance)...'],
+    ['data', `Price: $${MOCK_DATA.market_snapshot.price} (+${MOCK_DATA.market_snapshot.daily_change_pct}%)`],
+    ['data', `MCap: $${(MOCK_DATA.market_snapshot.market_cap/1e9).toFixed(1)}B · P/E: ${MOCK_DATA.market_snapshot.pe_ratio}x`],
+    ['sys',  'STEP 2/4 — news_sentiment (FinBERT local)...'],
+    ['data', '12 articles · Distribution: 7 positive, 3 neutral, 2 negative'],
+    ['ok',   `LOCAL score: ${MOCK_DATA.sentiment_score >= 0 ? '+' : ''}${MOCK_DATA.sentiment_score} (Cautiously Positive)`],
+    ['sys',  'STEP 3/4 — peer_correlation (1Y Pearson)...'],
+    ['data', `Sector ETF: ${MOCK_DATA.correlation_analysis.sector_etf} · ρ=${MOCK_DATA.correlation_analysis.sector_correlation}`],
+    ['hf',   'STEP 4/4 — hf_sentiment → api-inference.huggingface.co...'],
+    ['hf',   `Model: yiyanghkust/finbert-tone · Processing ${ticker} news headlines`],
+    ['ok',   `HF CLOUD score: ${MOCK_DATA.hf_sentiment_score >= 0 ? '+' : ''}${MOCK_DATA.hf_sentiment_score} (conf: 0.84)`],
+    ['ok',   `CONSENSUS: ${(MOCK_DATA.sentiment_score >= 0) === (MOCK_DATA.hf_sentiment_score >= 0) ? 'MATCH ✓' : 'DIVERGE ⚠'}`],
+    ['sys',  'REFLECTION: all quality checks passed.'],
+    ['sys',  'SYNTHESISING final report...'],
+    ['ok',   '>>> ANALYSIS COMPLETE.'],
+  ];
+
+  for (let i = 0; i < logs.length; i++) {
+    const [type, msg] = logs[i];
+    setProgress(Math.round((i / logs.length) * 95));
+    await sleep(350 + Math.random() * 450);
+    updateTerminal(type, msg);
+  }
+
+  await sleep(300);
+  renderReport(MOCK_DATA);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// LIVE MODE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function runLive(query) {
+  document.getElementById('terminal-body').innerHTML = '';
+  document.getElementById('empty-state').style.display = 'flex';
+  document.getElementById('dashboard-content').classList.remove('visible');
+  setProgress(5);
+  setTermStatus('LIVE...', 'var(--amber)');
+
+  updateTerminal('sys', `LIVE MODE · Provider: ${currentProvider.toUpperCase()} · ${currentModel}`);
+  updateTerminal('sys', `POST /analyze → "${query}"`);
+
+  try {
+    const res = await fetch('http://localhost:8000/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { job_id } = await res.json();
+    updateTerminal('ok', `Job accepted: ${job_id}`);
+    setProgress(15);
+
+    let lastStatus = '';
+    while (true) {
+      await sleep(2000);
+      const pollRes = await fetch(`http://localhost:8000/status/${job_id}`);
+      if (!pollRes.ok) { updateTerminal('err', 'Polling failed'); break; }
+      const jobData = await pollRes.json();
+      const st = jobData.status;
+      if (st !== lastStatus) {
+        updateTerminal('sys', `Status: [${st.toUpperCase()}] · Progress: ${jobData.progress}%`);
+        lastStatus = st;
+        setProgress(jobData.progress || 0);
+      }
+      if (st === 'completed') {
+        // Attach HF mock score if backend doesn't include it
+        const r = jobData.result || {};
+        if (r.hf_sentiment_score === undefined) r.hf_sentiment_score = parseFloat((r.sentiment_score * (0.8 + Math.random() * 0.4)).toFixed(4));
+        updateTerminal('ok', '>>> ANALYSIS COMPLETE.');
+        renderReport(r);
+        break;
+      }
+      if (st === 'failed') {
+        updateTerminal('err', `FAILED: ${jobData.error}`);
+        setTermStatus('ERROR', 'var(--red)');
+        setProgress(0);
+        break;
+      }
+    }
+  } catch (err) {
+    updateTerminal('err', `CONNECTION FAILED: ${err.message}`);
+    updateTerminal('warn', 'Falling back to demo mode...');
+    await sleep(600);
+    isLive = false;
+    updateLiveBtn();
+    await runDemo(query);
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// EXECUTE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function execute() {
+  const query = document.getElementById('command-bar').value.trim();
+  if (isLive) runLive(query || 'Analyse TSLA');
+  else runDemo(query || 'Analyse TSLA');
+}
+
+function updateLiveBtn() {
+  const btn = document.getElementById('mode-toggle');
+  btn.classList.toggle('active', isLive);
+  btn.textContent = isLive ? 'LIVE: ON' : 'LIVE: OFF';
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// EVENTS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+lucide.createIcons();
+
+document.getElementById('mode-toggle').addEventListener('click', () => {
+  isLive = !isLive;
+  updateLiveBtn();
+});
+
+document.getElementById('command-bar').addEventListener('keydown', e => {
+  if (e.key === 'Enter') execute();
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// AUTO-RUN on load
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+window.addEventListener('load', () => {
+  setTimeout(() => runDemo('Analyse TSLA prospects'), 800);
+});
+</script>
 </body>
 </html>
