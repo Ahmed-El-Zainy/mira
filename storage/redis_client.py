@@ -1,12 +1,17 @@
 """storage/redis_client.py – thin wrapper around Redis for all M.I.R.A. state."""
+
 from __future__ import annotations
 
 import json
+import os
+import sys
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 import redis
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.config import get_settings
 
@@ -79,15 +84,19 @@ class RedisClient:
     ) -> None:
         key = _key("job", job_id, "tokens")
         current_raw = self._r.get(key)
-        current = json.loads(current_raw) if current_raw else {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-            "estimated_cost_usd": 0.0,
-        }
-        current["prompt_tokens"]      += prompt_tokens
-        current["completion_tokens"]  += completion_tokens
-        current["total_tokens"]       += prompt_tokens + completion_tokens
+        current = (
+            json.loads(current_raw)
+            if current_raw
+            else {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "estimated_cost_usd": 0.0,
+            }
+        )
+        current["prompt_tokens"] += prompt_tokens
+        current["completion_tokens"] += completion_tokens
+        current["total_tokens"] += prompt_tokens + completion_tokens
         current["estimated_cost_usd"] += cost_usd
         self._r.set(key, json.dumps(current))
 

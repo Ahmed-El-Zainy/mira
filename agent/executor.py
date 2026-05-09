@@ -9,7 +9,7 @@ from tools.market_data import MarketDataTool
 from tools.news_sentiment import NewsSentimentTool
 from tools.peer_correlation import PeerCorrelationTool
 from utils.config import get_settings
-from utils.logging import AgentLogger
+from utils.agent_logger import AgentLogger
 
 _settings = get_settings()
 

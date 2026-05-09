@@ -3,10 +3,7 @@ from __future__ import annotations
 
 import json
 
-from openai import AsyncOpenAI
-from utils.config import get_settings
-
-_settings = get_settings()
+from utils.llm_client import clean_llm_response, get_llm_client, get_model_name, supports_json_mode
 
 _SYSTEM = """
 You are M.I.R.A.'s internal quality evaluator. Analyse the tool results against
@@ -22,7 +19,7 @@ Trigger rules (check all three):
 3. NEUTRAL_SENT  – if |sentiment_score| < 0.05 (virtually flat), more context is
    needed. Recommend fetching analyst commentary or sector news.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON. No explanation, no markdown fences:
 {
   "needs_more_research": true | false,
   "triggers_fired": ["SECTOR_LOCK" | "STALE_NEWS" | "NEUTRAL_SENT"],
@@ -34,7 +31,8 @@ Return ONLY valid JSON:
 
 class ReflectionModule:
     def __init__(self) -> None:
-        self._client = AsyncOpenAI(api_key=_settings.openai_api_key)
+        self._client = get_llm_client()
+        self._model  = get_model_name()
 
     async def evaluate_results(self, results: dict, query: str) -> dict:
         """Apply rule-based pre-checks, then call LLM for nuanced evaluation."""
@@ -66,16 +64,19 @@ class ReflectionModule:
 
         # ── LLM pass only when at least one trigger fired ─────────────────────
         payload = {
-            "query":   query,
-            "results": results,
+            "query":              query,
+            "results":            results,
             "rule_based_triggers": triggers,
         }
-        resp = await self._client.chat.completions.create(
-            model=_settings.llm_model,
-            response_format={"type": "json_object"},
+        kwargs = dict(
+            model=self._model,
             messages=[
                 {"role": "system", "content": _SYSTEM},
                 {"role": "user",   "content": json.dumps(payload)},
             ],
         )
-        return json.loads(resp.choices[0].message.content)
+        if supports_json_mode():
+            kwargs["response_format"] = {"type": "json_object"}
+
+        resp = await self._client.chat.completions.create(**kwargs)
+        return json.loads(clean_llm_response(resp.choices[0].message.content))

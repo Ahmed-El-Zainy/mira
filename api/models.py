@@ -21,6 +21,6 @@ class JobStatus(BaseModel):
     result: dict | None = None
     error: str | None = None
     tool_calls_used: int = 0
-    budget_exceeded: bool = False
-    tag: str = ""
+    budget_exceeded: bool | None = False
+    tag: str | None = ""
     created_at: str | None = None

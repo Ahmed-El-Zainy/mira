@@ -11,7 +11,7 @@ from agent.reflection import ReflectionModule
 from storage.redis_client import RedisClient
 from utils.config import get_settings
 from utils.llm_client import clean_llm_response, get_llm_client, get_model_name, supports_json_mode
-from utils.logging import AgentLogger
+from utils.agent_logger import AgentLogger
 
 _settings = get_settings()
 

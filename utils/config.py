@@ -29,9 +29,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # LLM
+    # LLM – provider selection
+    llm_provider: str = "openai"                        # "openai" or "ollama"
     openai_api_key: str = ""
-    llm_model: str = "gpt-4o"
+    llm_model: str = "gpt-4o"                          # used when provider=openai
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "lfm2.5-thinking:1.2b"               # used when provider=ollama
     max_tool_calls_per_job: int = 10
 
     # News

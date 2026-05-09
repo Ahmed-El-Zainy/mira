@@ -309,6 +309,13 @@
             if (isLive) runLive();
             else runDemo();
         });
+
+        // AUTO-RUN on load
+        window.onload = () => {
+            console.log("M.I.R.A. Dashboard Initialized.");
+            // Short delay for the "loading" feel
+            setTimeout(runDemo, 1000);
+        };
     </script>
 </body>
 </html>

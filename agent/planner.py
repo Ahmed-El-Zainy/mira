@@ -3,11 +3,7 @@ from __future__ import annotations
 
 import json
 
-from openai import AsyncOpenAI
-
-from utils.config import get_settings
-
-_settings = get_settings()
+from utils.llm_client import clean_llm_response, get_llm_client, get_model_name, supports_json_mode
 
 _INITIAL_SYSTEM = """
 You are M.I.R.A.'s research planning assistant. Given a company analysis query, produce
@@ -19,7 +15,7 @@ Available tools:
   - news_sentiment     : recent news articles + FinBERT sentiment scores
   - peer_correlation   : Pearson correlations vs S&P 500, sector ETF, peers
 
-Respond ONLY with a valid JSON object:
+Respond ONLY with a valid JSON object. No explanation, no markdown fences:
 {
   "ticker":  "TSLA",
   "company": "Tesla, Inc.",
@@ -34,23 +30,28 @@ Respond ONLY with a valid JSON object:
 _REFLECTION_SYSTEM = """
 You are M.I.R.A.'s adaptive research planner. Based on the reflection findings, produce
 an additional research plan. Return ONLY a JSON plan (same schema as initial plan).
+No explanation, no markdown fences.
 """.strip()
 
 
 class Planner:
     def __init__(self) -> None:
-        self._client = AsyncOpenAI(api_key=_settings.openai_api_key)
+        self._client = get_llm_client()
+        self._model  = get_model_name()
 
     async def create_initial_plan(self, query: str) -> dict:
-        resp = await self._client.chat.completions.create(
-            model=_settings.llm_model,
-            response_format={"type": "json_object"},
+        kwargs = dict(
+            model=self._model,
             messages=[
-                {"role": "system",  "content": _INITIAL_SYSTEM},
-                {"role": "user",    "content": query},
+                {"role": "system", "content": _INITIAL_SYSTEM},
+                {"role": "user",   "content": query},
             ],
         )
-        return json.loads(resp.choices[0].message.content)
+        if supports_json_mode():
+            kwargs["response_format"] = {"type": "json_object"}
+
+        resp = await self._client.chat.completions.create(**kwargs)
+        return json.loads(clean_llm_response(resp.choices[0].message.content))
 
     async def create_reflection_plan(self, reflection_result: dict, original_query: str) -> dict:
         prompt = (
@@ -58,12 +59,15 @@ class Planner:
             f"Reflection findings:\n{json.dumps(reflection_result, indent=2)}\n\n"
             "Produce an additional research plan addressing the gaps above."
         )
-        resp = await self._client.chat.completions.create(
-            model=_settings.llm_model,
-            response_format={"type": "json_object"},
+        kwargs = dict(
+            model=self._model,
             messages=[
                 {"role": "system", "content": _REFLECTION_SYSTEM},
                 {"role": "user",   "content": prompt},
             ],
         )
-        return json.loads(resp.choices[0].message.content)
+        if supports_json_mode():
+            kwargs["response_format"] = {"type": "json_object"}
+
+        resp = await self._client.chat.completions.create(**kwargs)
+        return json.loads(clean_llm_response(resp.choices[0].message.content))

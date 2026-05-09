@@ -41,12 +41,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import FileResponse
+
 app.include_router(router)
+
+
+@app.get("/", include_in_schema=False)
+async def serve_demo():
+    """Serve the HTML demo at the root path."""
+    demo_path = Path(__file__).resolve().parent.parent / "demo.html"
+    return FileResponse(demo_path)
 
 
 @app.on_event("startup")
 async def _startup():
-    """Start the background monitoring service."""
+    """Start the background monitoring service and verify LLM readiness."""
+    from utils.llm_client import ensure_model_ready, get_model_name
+    model = get_model_name()
+    
+    # Auto-pull model if using Ollama and it's missing
+    ready = await ensure_model_ready()
+    if ready:
+        logging.info(f"LLM Provider Ready: {model} initialized successfully.")
+    else:
+        logging.error(f"LLM Readiness Check Failed for {model}.")
+        logging.warning("Proceeding with caution. Agent may fail on first analysis.")
+
     from monitoring.scheduler import MonitoringService
     svc = MonitoringService()
     svc.start()

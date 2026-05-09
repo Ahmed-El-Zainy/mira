@@ -6,6 +6,7 @@ Trade-off documented in README:
   • LLM-based        – zero extra setup, GPT-4 is highly context-aware, but
     adds latency & cost per article. FinBERT is the better default here.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -23,6 +24,7 @@ _FINBERT_MODEL = "ProsusAI/finbert"
 def _get_pipeline():
     """Lazy-load FinBERT so it doesn't block startup."""
     from transformers import pipeline  # type: ignore
+
     return pipeline("sentiment-analysis", model=_FINBERT_MODEL, truncation=True)
 
 
@@ -38,7 +40,9 @@ class NewsSentimentTool:
 
     async def execute(self, company_name: str, ticker: str) -> dict[str, Any]:
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._fetch_and_score, company_name, ticker)
+        return await loop.run_in_executor(
+            None, self._fetch_and_score, company_name, ticker
+        )
 
     def _fetch_and_score(self, company_name: str, ticker: str) -> dict[str, Any]:
         articles = self._fetch_articles(company_name, ticker)
@@ -66,26 +70,29 @@ class NewsSentimentTool:
 
             # Age in hours
             from datetime import datetime, timezone
+
             published = art.get("publishedAt")
             age_h: float | None = None
             if published:
                 try:
                     pub_dt = datetime.fromisoformat(published.replace("Z", "+00:00"))
-                    age_h  = (datetime.now(timezone.utc) - pub_dt).total_seconds() / 3600
+                    age_h = (datetime.now(timezone.utc) - pub_dt).total_seconds() / 3600
                     if oldest_hours is None or age_h > oldest_hours:
                         oldest_hours = age_h
                 except Exception:
                     pass
 
-            results.append({
-                "id": _article_id(art.get("url", "")),
-                "title": art.get("title"),
-                "url": art.get("url"),
-                "published_at": published,
-                "age_hours": round(age_h, 1) if age_h is not None else None,
-                "sentiment": label,
-                "confidence": round(scored["score"], 4),
-            })
+            results.append(
+                {
+                    "id": _article_id(art.get("url", "")),
+                    "title": art.get("title"),
+                    "url": art.get("url"),
+                    "published_at": published,
+                    "age_hours": round(age_h, 1) if age_h is not None else None,
+                    "sentiment": label,
+                    "confidence": round(scored["score"], 4),
+                }
+            )
 
         total = len(results)
         score = (dist["positive"] - dist["negative"]) / total if total else 0.0
@@ -108,8 +115,16 @@ class NewsSentimentTool:
             "&language=en&sortBy=publishedAt&pageSize=5"
         )
         try:
-            resp = requests.get(url, headers={"Authorization": f"Bearer {self._key}"}, timeout=10)
+            resp = requests.get(
+                url, headers={"Authorization": f"Bearer {self._key}"}, timeout=10
+            )
             resp.raise_for_status()
             return resp.json().get("articles", [])
         except Exception:
             return []
+
+
+if __name__ == "__main__":
+    news = NewsSentiment()
+    articles = news._fetch_articles("", "")
+    print(articles)

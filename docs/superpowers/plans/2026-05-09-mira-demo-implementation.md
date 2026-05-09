@@ -1,0 +1,389 @@
+# Mira HTML Demo Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Create a modern, dynamic HTML demo (`demo.html`) that visualizes the Mira agent's output using a cyber-noir split-screen layout.
+
+**Architecture:** A single-file responsive HTML application using Tailwind CSS for styling and Chart.js for data visualization. It features a "Neural Link" terminal for logs and an "Analyst Output" dashboard for results, supporting both live API polling and static mock data.
+
+**Tech Stack:** HTML5, Tailwind CSS (CDN), Chart.js (CDN), Lucide Icons (CDN), Vanilla JavaScript.
+
+---
+
+### Task 1: Scaffolding and Base Layout
+
+**Files:**
+- Create: `demo.html`
+
+- [ ] **Step 1: Create the base HTML structure with Tailwind and Chart.js CDNs**
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mira | Ghost in the Machine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500&family=Inter:wght@300;400;600;700&display=swap');
+        body { background-color: #0a0a0b; color: #e4e4e7; font-family: 'Inter', sans-serif; }
+        .terminal-font { font-family: 'Fira Code', monospace; }
+        .matrix-green { color: #00ff41; text-shadow: 0 0 5px rgba(0, 255, 65, 0.5); }
+        .neon-sapphire { color: #00d4ff; text-shadow: 0 0 5px rgba(0, 212, 255, 0.5); }
+        .flicker { animation: flicker 0.15s infinite; }
+        @keyframes flicker { 0% { opacity: 0.97; } 5% { opacity: 0.95; } 10% { opacity: 0.9; } 15% { opacity: 0.95; } 20% { opacity: 0.98; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+    <!-- Header -->
+    <header class="border-b border-zinc-800 p-4 flex justify-between items-center bg-black/50 backdrop-blur-md z-10">
+        <div class="flex items-center gap-3">
+            <div class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+            <h1 class="text-xl font-bold tracking-tighter neon-sapphire">M.I.R.A. v0.1.0</h1>
+        </div>
+        <div class="flex gap-4">
+            <button id="mode-toggle" class="px-3 py-1 rounded border border-zinc-700 text-xs hover:bg-zinc-800 transition-colors">LIVE MODE: OFF</button>
+            <button id="run-demo" class="px-4 py-1 bg-blue-600 rounded text-xs font-semibold hover:bg-blue-500 transition-colors">INITIALIZE ANALYSIS</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex overflow-hidden">
+        <!-- Left Pane: Neural Link -->
+        <section class="w-[40%] border-r border-zinc-800 bg-black/30 flex flex-col">
+            <div class="p-2 border-b border-zinc-800 bg-zinc-900/50 flex justify-between items-center">
+                <span class="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-2">Neural Link Logs</span>
+                <i data-lucide="cpu" class="w-3 h-3 text-zinc-500"></i>
+            </div>
+            <div id="terminal" class="flex-1 p-4 terminal-font text-sm overflow-y-auto matrix-green flicker">
+                <div class="mb-1 opacity-50">> System initialized. Waiting for handshake...</div>
+            </div>
+        </section>
+
+        <!-- Right Pane: Analyst Output -->
+        <section class="w-[60%] overflow-y-auto p-8 relative">
+            <div id="dashboard-empty" class="absolute inset-0 flex flex-col items-center justify-center text-zinc-600 bg-black/40 z-0">
+                <i data-lucide="database" class="w-12 h-12 mb-4 opacity-20"></i>
+                <p class="text-sm font-medium">AWAITING SYNTHESIS...</p>
+            </div>
+            <div id="dashboard-content" class="hidden space-y-8 opacity-0 transition-opacity duration-1000">
+                <!-- Ticker Header -->
+                <div class="flex justify-between items-end border-b border-zinc-800 pb-6">
+                    <div>
+                        <h2 id="company-ticker" class="text-5xl font-black neon-sapphire tracking-tighter">---</h2>
+                        <p id="company-name" class="text-zinc-400 font-medium">---</p>
+                    </div>
+                    <div class="text-right">
+                        <div id="price" class="text-4xl font-bold tracking-tight">---</div>
+                        <div id="daily-change" class="text-sm font-medium">---</div>
+                    </div>
+                </div>
+
+                <!-- Metrics Grid -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-zinc-900/50 p-4 border border-zinc-800 rounded-lg">
+                        <p class="text-[10px] uppercase text-zinc-500 mb-1">Sentiment Score</p>
+                        <canvas id="sentimentChart" height="150"></canvas>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-zinc-900/50 p-4 border border-zinc-800 rounded-lg flex flex-col justify-center">
+                            <p class="text-[10px] uppercase text-zinc-500 mb-1">P/E Ratio</p>
+                            <p id="pe-ratio" class="text-xl font-bold">---</p>
+                        </div>
+                        <div class="bg-zinc-900/50 p-4 border border-zinc-800 rounded-lg flex flex-col justify-center">
+                            <p class="text-[10px] uppercase text-zinc-500 mb-1">Market Cap</p>
+                            <p id="market-cap" class="text-xl font-bold">---</p>
+                        </div>
+                        <div class="bg-zinc-900/50 p-4 border border-zinc-800 rounded-lg flex flex-col justify-center">
+                            <p class="text-[10px] uppercase text-zinc-500 mb-1">52W Range</p>
+                            <p id="range" class="text-sm font-semibold">---</p>
+                        </div>
+                        <div class="bg-zinc-900/50 p-4 border border-zinc-800 rounded-lg flex flex-col justify-center">
+                            <p class="text-[10px] uppercase text-zinc-500 mb-1">Status</p>
+                            <span class="text-green-500 text-xs font-bold flex items-center gap-1"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span> NOMINAL</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Summary Section -->
+                <div>
+                    <h3 class="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-widest">Analysis Summary</h3>
+                    <p id="analysis-summary" class="text-lg leading-relaxed text-zinc-200"></p>
+                </div>
+
+                <!-- Key Findings -->
+                <div class="space-y-4">
+                    <h3 class="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-widest">Key Findings</h3>
+                    <div id="key-findings" class="space-y-2"></div>
+                </div>
+
+                <!-- Correlations -->
+                <div>
+                    <h3 class="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-widest">Peer Correlations</h3>
+                    <div id="correlations" class="grid grid-cols-4 gap-2"></div>
+                </div>
+
+                <!-- Citations -->
+                <div class="border-t border-zinc-800 pt-6">
+                    <h3 class="text-xs font-bold uppercase text-zinc-500 mb-3 tracking-widest">Citations</h3>
+                    <div id="citations" class="space-y-1 text-xs text-zinc-500"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        lucide.createIcons();
+        // Initialize scripts in Task 2
+    </script>
+</body>
+</html>
+```
+
+- [ ] **Step 2: Commit scaffolding**
+
+```bash
+git add demo.html
+git commit -m "web: scaffold demo.html with split-screen layout"
+```
+
+---
+
+### Task 2: Data Logic and Mock Mode
+
+**Files:**
+- Modify: `demo.html`
+
+- [ ] **Step 1: Implement the Mock Data and Terminal Logic**
+
+```javascript
+// Add inside the <script> tag of demo.html
+const MOCK_DATA = {
+    "company_ticker": "TSLA",
+    "company_name": "Tesla, Inc.",
+    "analysis_summary": "Tesla continues to exhibit above-market volatility with a strong correlation to the consumer discretionary sector (0.89), suggesting macro tailwinds and headwinds affect it disproportionately. Recent news sentiment is cautiously positive (score: 0.2), driven by optimism around the Cybertruck ramp and FSD v12 rollout, partially offset by concerns around margin compression from aggressive price cuts.",
+    "sentiment_score": 0.2,
+    "market_snapshot": {
+        "price": 245.67,
+        "daily_change_pct": 1.23,
+        "market_cap": 782500000000,
+        "pe_ratio": 65.4,
+        "52w_high": 299.29,
+        "52w_low": 152.37
+    },
+    "correlation_analysis": {
+        "peer_correlations": { "RIVN": 0.78, "NIO": 0.65, "LCID": 0.52, "F": 0.41 }
+    },
+    "key_findings": [
+        "Elevated sector correlation (0.89) indicates high macro sensitivity.",
+        "Positive sentiment around FSD v12 provides a near-term catalyst.",
+        "High P/E of 65x leaves limited margin of safety for delivery misses."
+    ],
+    "citation_sources": [
+        "https://finance.yahoo.com/quote/TSLA",
+        "https://newsapi.org/v2/tesla-report"
+    ]
+};
+
+const MOCK_LOGS = [
+    "Handshake established. Initializing M.I.R.A. Core...",
+    "Planning: Analyzing query 'Analyse TSLA prospects'...",
+    "Ticker identified: TSLA (Tesla, Inc.)",
+    "Executing: Fetching market data via yfinance...",
+    "Retrieved price: $245.67 (+1.23%)",
+    "Executing: Scraping news articles (12 found)...",
+    "Running FinBERT sentiment analysis on news stream...",
+    "Sentiment analysis complete. Score: +0.2 (Cautiously Positive)",
+    "Executing: Calculating peer correlations (RIVN, NIO, LCID)...",
+    "Reflecting: Quality checks passed. No further research required.",
+    "Synthesising final investment report...",
+    "Report generated successfully. Porting to UI..."
+];
+
+let sentimentChart = null;
+
+function updateTerminal(message) {
+    const term = document.getElementById('terminal');
+    const div = document.createElement('div');
+    div.className = 'mb-1';
+    div.innerHTML = `<span class="opacity-30 mr-2">[${new Date().toLocaleTimeString()}]</span> ${message}`;
+    term.appendChild(div);
+    term.scrollTop = term.scrollHeight;
+}
+
+function initSentimentChart(score) {
+    const ctx = document.getElementById('sentimentChart').getContext('2d');
+    if (sentimentChart) sentimentChart.destroy();
+    
+    sentimentChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            datasets: [{
+                data: [Math.abs(score), 1 - Math.abs(score)],
+                backgroundColor: [score >= 0 ? '#00ff41' : '#ff3131', '#18181b'],
+                borderWidth: 0,
+                circumference: 180,
+                rotation: 270,
+            }]
+        },
+        options: {
+            cutout: '80%',
+            responsive: true,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } }
+        }
+    });
+}
+
+function renderReport(data) {
+    document.getElementById('dashboard-empty').classList.add('hidden');
+    const content = document.getElementById('dashboard-content');
+    content.classList.remove('hidden');
+    setTimeout(() => content.classList.add('opacity-100'), 50);
+
+    document.getElementById('company-ticker').textContent = data.company_ticker;
+    document.getElementById('company-name').textContent = data.company_name;
+    document.getElementById('price').textContent = `$${data.market_snapshot.price}`;
+    document.getElementById('daily-change').textContent = `${data.market_snapshot.daily_change_pct > 0 ? '+' : ''}${data.market_snapshot.daily_change_pct}%`;
+    document.getElementById('daily-change').className = `text-sm font-medium ${data.market_snapshot.daily_change_pct >= 0 ? 'text-green-500' : 'text-red-500'}`;
+    
+    document.getElementById('pe-ratio').textContent = `${data.market_snapshot.pe_ratio}x`;
+    document.getElementById('market-cap').textContent = `$${(data.market_snapshot.market_cap / 1e9).toFixed(1)}B`;
+    document.getElementById('range').textContent = `$${data.market_snapshot.52w_low} - $${data.market_snapshot.52w_high}`;
+    
+    document.getElementById('analysis-summary').textContent = data.analysis_summary;
+
+    const findings = document.getElementById('key-findings');
+    findings.innerHTML = '';
+    data.key_findings.forEach(f => {
+        const div = document.createElement('div');
+        div.className = 'flex gap-3 bg-zinc-900/30 p-3 rounded border border-zinc-800/50';
+        div.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-green-500 shrink-0 mt-1"></i><p class="text-sm">${f}</p>`;
+        findings.appendChild(div);
+    });
+
+    const corrContainer = document.getElementById('correlations');
+    corrContainer.innerHTML = '';
+    Object.entries(data.correlation_analysis.peer_correlations).forEach(([peer, val]) => {
+        const div = document.createElement('div');
+        div.className = 'bg-zinc-900/50 p-2 rounded border border-zinc-800 text-center';
+        div.innerHTML = `<p class="text-[10px] text-zinc-500 uppercase">${peer}</p><p class="font-bold text-sm">${val.toFixed(2)}</p>`;
+        corrContainer.appendChild(div);
+    });
+
+    const citations = document.getElementById('citations');
+    citations.innerHTML = '';
+    data.citation_sources.forEach(url => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.className = 'block hover:text-blue-400 transition-colors truncate';
+        a.textContent = url;
+        citations.appendChild(a);
+    });
+
+    lucide.createIcons();
+    initSentimentChart(data.sentiment_score);
+}
+
+async function runDemo() {
+    document.getElementById('terminal').innerHTML = '';
+    document.getElementById('dashboard-content').classList.add('hidden');
+    document.getElementById('dashboard-content').classList.remove('opacity-100');
+    document.getElementById('dashboard-empty').classList.remove('hidden');
+
+    for (const log of MOCK_LOGS) {
+        updateTerminal(log);
+        await new Promise(r => setTimeout(r, 600 + Math.random() * 800));
+    }
+    
+    renderReport(MOCK_DATA);
+    updateTerminal(">>> SYSTEM READY. STANDING BY.");
+}
+
+document.getElementById('run-demo').addEventListener('click', runDemo);
+```
+
+- [ ] **Step 2: Verify locally**
+
+Open `demo.html` in a browser and click "INITIALIZE ANALYSIS".
+Expected: Logs scroll in the left pane, then the report appears in the right pane.
+
+- [ ] **Step 3: Commit Mock Logic**
+
+```bash
+git add demo.html
+git commit -m "web: add mock data logic and terminal animation"
+```
+
+---
+
+### Task 3: Live Mode Plumbing
+
+**Files:**
+- Modify: `demo.html`
+
+- [ ] **Step 1: Add Live API Integration**
+
+```javascript
+// Add to <script> in demo.html
+let isLive = false;
+
+document.getElementById('mode-toggle').addEventListener('click', () => {
+    isLive = !isLive;
+    const btn = document.getElementById('mode-toggle');
+    btn.textContent = `LIVE MODE: ${isLive ? 'ON' : 'OFF'}`;
+    btn.className = `px-3 py-1 rounded border text-xs transition-colors ${isLive ? 'bg-green-900/20 border-green-500 text-green-500' : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'}`;
+});
+
+async function runLive() {
+    const query = prompt("Enter ticker or query:", "Analyse TSLA");
+    if (!query) return;
+
+    try {
+        updateTerminal(">>> INITIALIZING LIVE SESSION...");
+        const res = await fetch('http://localhost:8000/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+        });
+        const { job_id } = await res.json();
+        updateTerminal(`Job ID: ${job_id}. Polling state...`);
+
+        let status = 'queued';
+        while (status !== 'completed' && status !== 'failed') {
+            const pollRes = await fetch(`http://localhost:8000/status/${job_id}`);
+            const jobData = await pollRes.json();
+            status = jobData.status;
+
+            updateTerminal(`State: [${status.toUpperCase()}] | Progress: ${jobData.progress}%`);
+            
+            if (status === 'completed') {
+                renderReport(jobData.result);
+                updateTerminal(">>> ANALYSIS COMPLETE.");
+            } else if (status === 'failed') {
+                updateTerminal(`!!! ERROR: ${jobData.error}`);
+            }
+            
+            await new Promise(r => setTimeout(r, 2000));
+        }
+    } catch (err) {
+        updateTerminal(`!!! CONNECTION FAILED: ${err.message}`);
+    }
+}
+
+// Update the event listener
+document.getElementById('run-demo').addEventListener('click', () => {
+    if (isLive) runLive();
+    else runDemo();
+});
+```
+
+- [ ] **Step 2: Commit Live Mode**
+
+```bash
+git add demo.html
+git commit -m "web: add live API polling support to demo.html"
+```
