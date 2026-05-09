@@ -1,183 +1,592 @@
-# M.I.R.A. — Market Intelligence & Research Agent
+<div align="center">
 
-> Autonomous AI agent that monitors equity markets, performs deep multi-step research,
-> and generates structured, data-driven investment analysis reports.
+```
+███╗   ███╗    ██╗    ██████╗    █████╗
+████╗ ████║    ██║    ██╔══██╗  ██╔══██╗
+██╔████╔██║    ██║    ██████╔╝  ███████║
+██║╚██╔╝██║    ██║    ██╔══██╗  ██╔══██║
+██║ ╚═╝ ██║    ██║    ██║  ██║  ██║  ██║
+╚═╝     ╚═╝    ╚═╝    ╚═╝  ╚═╝  ╚═╝  ╚═╝
+```
+
+**Market Intelligence & Research Agent**
+
+*Autonomous AI agent that monitors equity markets, performs deep multi-step research,*
+*and generates structured, data-driven investment analysis reports.*
+
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![HuggingFace](https://img.shields.io/badge/HuggingFace-Router-FFD21E?style=flat&logo=huggingface&logoColor=black)](https://huggingface.co)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat&logo=docker&logoColor=white)](https://docker.com)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat)](LICENSE)
+
+</div>
 
 ---
 
-## Architecture Overview
+## What is M.I.R.A.?
+
+M.I.R.A. is a production-grade agentic AI system that autonomously researches publicly traded companies and delivers structured investment analysis reports. Given a natural-language query like *"Analyse the near-term prospects of Tesla (TSLA)"*, it:
+
+1. **Plans** a multi-step research strategy using an LLM
+2. **Executes** financial data tools in sequence — market data, news sentiment, peer correlations, and cloud sentiment comparison
+3. **Reflects** on result quality against concrete trigger rules, re-researching if gaps are found
+4. **Synthesises** a final JSON report with actionable key findings, dual sentiment scores, and cited sources
+5. **Monitors** registered tickers continuously in the background, firing proactive alerts when significant price or volume events occur
+
+The Neural Core demo (`demo.html`) visualises the entire pipeline live — terminal logs, dual sentiment gauges, correlation heatmaps, revenue sparklines — and connects directly to the running API.
+
+---
+
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                        Client                           │
-└─────────────┬───────────────────────────────────────────┘
-              │ REST
-┌─────────────▼───────────────────────────────────────────┐
-│              FastAPI  (api/main.py · api/routes.py)      │
-│  POST /analyze  ·  GET /status/{id}  ·  GET /logs/{id}  │
-│  POST /monitor_start  ·  GET /health                     │
-└──────┬─────────────────────────────────────────┬────────┘
-       │ BackgroundTask                           │ Startup
-┌──────▼──────────────────────┐   ┌──────────────▼───────┐
-│   AgentCore  (agent/core)   │   │  MonitoringService   │
-│  ┌──────────┐ ┌──────────┐  │   │  (monitoring/        │
-│  │ Planner  │ │Reflection│  │   │   scheduler.py)      │
-│  └────┬─────┘ └──────────┘  │   │  TriggerEvaluator    │
-│       │                     │   └──────────────────────┘
-│  ┌────▼──────┐               │
-│  │ Executor  │               │
-│  └──┬──┬──┬──┘               │
-└─────│──│──│──────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     Neural Core Demo                        │
+│              demo.html  (single-file frontend)              │
+│   Command Bar · Dual Gauges · Terminal · Heatmap · Charts   │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ REST / polling
+┌──────────────────────▼──────────────────────────────────────┐
+│         FastAPI  (api/main.py · api/routes.py)              │
+│  POST /analyze · GET /status/{id} · GET /logs/{id}          │
+│  POST /monitor_start · GET /health · GET /config            │
+└───────┬──────────────────────────────────────────┬──────────┘
+        │ BackgroundTask                            │ Startup
+┌───────▼──────────────────────────┐  ┌────────────▼─────────┐
+│   AgentCore  (agent/core.py)     │  │  MonitoringService   │
+│                                  │  │  (monitoring/)       │
+│  ┌──────────┐  ┌──────────────┐  │  │  TriggerEvaluator    │
+│  │ Planner  │  │  Reflection  │  │  │  · PRICE_DEVIATION   │
+│  └────┬─────┘  └──────────────┘  │  │  · VOLUME_SPIKE      │
+│       │                          │  │  · NEW_ARTICLES      │
+│  ┌────▼──────┐                   │  └──────────────────────┘
+│  │ Executor  │                   │
+│  └──┬──┬──┬──┘                   │
+└─────│──│──│─────────────────────-┘
       │  │  │
- ┌────▼┐ │ ┌▼───────────────┐
- │MktDt│ │ │PeerCorrelation │
- └─────┘ │ └────────────────┘
-      ┌──▼────────────┐
-      │NewsSentiment  │
-      │ (FinBERT)     │
-      └───────────────┘
-              │
-      ┌───────▼──────┐
-      │   Redis      │
-      │  (jobs/state │
-      │   /logs)     │
-      └──────────────┘
+      │  │  └──────────────────────── peer_correlation (yfinance)
+      │  └───────────────────────────  news_sentiment  (NewsAPI + FinBERT)
+      └──────────────────────────────  market_data     (yfinance)
+                                        hf_sentiment   (HF Inference API)
+                                               │
+                                    ┌──────────▼──────────┐
+                                    │        Redis        │
+                                    │  jobs · logs · state│
+                                    └─────────────────────┘
 ```
 
-**Request lifecycle:**
-1. `POST /analyze` → job queued in Redis, `job_id` returned immediately (async).
-2. `AgentCore` runs: **Plan** → **Execute** → **Reflect** (→ **Re-plan** if needed) → **Synthesise**.
-3. Final JSON report stored in Redis, retrievable via `GET /status/{job_id}`.
-4. Background `MonitoringService` polls registered tickers every hour, fires `PROACTIVE_ALERT` jobs when triggers are met.
+### Request Lifecycle
+
+```
+POST /analyze
+    │
+    ├─→ job queued in Redis → job_id returned immediately (202)
+    │
+    └─→ Background: AgentCore._run()
+            │
+            ├─ 1. Planner  → LLM generates step-by-step tool plan (JSON)
+            ├─ 2. Executor → runs each tool, logs timing & outputs to Redis
+            ├─ 3. Reflection → rule checks + LLM critique → re-plan if needed
+            └─ 4. Synthesis → LLM writes final report JSON → stored in Redis
+
+GET /status/{job_id}  → poll until status == "completed" | "failed"
+```
 
 ---
 
-## Technology Choices & Rationale
+## Tech Stack
 
-| Component | Choice | Rationale |
-|-----------|--------|-----------|
+| Component | Choice | Why |
+|-----------|--------|-----|
 | Framework | FastAPI | Native async, auto OpenAPI docs, Pydantic validation |
-| LLM | OpenAI GPT-4o | Best reasoning + JSON mode; function-calling mature |
-| Sentiment | FinBERT (local) | Domain-tuned for finance; zero marginal cost per article |
-| Market data | yfinance | No auth required; effectively unlimited; covers price, fundamentals, OHLC |
-| News | NewsAPI.org (free) | Simple REST, 100 req/day sufficient for assessment |
-| State/Queue | Redis 7 | In-memory speed for job state; AOF persistence for monitoring state |
+| LLM (primary) | HuggingFace Router | OpenAI-compatible API — swap any HF model via `.env` |
+| LLM (alt) | Ollama (local) | Zero-cost, offline-capable; same OpenAI-compatible interface |
+| LLM (alt) | OpenAI GPT-4o | Best JSON-mode support when budget allows |
+| Sentiment (local) | FinBERT (`ProsusAI/finbert`) | Finance-domain fine-tuned; zero marginal cost per article |
+| Sentiment (cloud) | `yiyanghkust/finbert-tone` via HF API | Independent second opinion; enables MATCH/DIVERGE consensus |
+| Market data | yfinance | No auth; price, fundamentals, OHLC, 1Y history |
+| News | NewsAPI.org | Simple REST, 100 req/day free tier |
+| State / Queue | Redis 7 | In-memory job state, logs, monitoring baseline |
 | Container | Docker + Compose | Single-command reproducible deployment |
+| Demo UI | Vanilla HTML/JS | Single-file, zero build step; Tailwind CDN + Chart.js |
 
-**FinBERT vs. LLM-based sentiment trade-off:**
-FinBERT runs locally, adds ~200 ms/article, needs ~500 MB of model weights on first run, but incurs zero ongoing API cost and is specifically fine-tuned on financial text (Reuters, SEC filings). LLM-based scoring (e.g., GPT-4o) would be more context-aware and handle sarcasm better, but adds ~$0.002 per article and latency. FinBERT is the right default; switch to LLM-based for edge cases like earnings-call transcripts.
+---
+
+## Features
+
+### Agent Pipeline
+- **Planner** — chain-of-thought LLM reasoning produces a JSON execution plan per query
+- **Executor** — runs `market_data`, `news_sentiment`, `peer_correlation`, `hf_sentiment` with per-tool timing and budget enforcement (`MAX_TOOL_CALLS_PER_JOB`)
+- **Reflection** — three concrete trigger rules checked before synthesis:
+  - `SECTOR_LOCK` — sector correlation > 0.95 (macro-dominated, not idiosyncratic)
+  - `STALE_NEWS` — articles older than 72h or zero articles found
+  - `NEUTRAL_SENT` — |sentiment| < 0.05 (flat signal, needs more context)
+- **Synthesis** — LLM writes final report; all numeric claims traced to tool outputs
+
+### Dual-Sentiment Engine
+Two independent models score the same news stream:
+
+| Model | Source | Type |
+|-------|--------|------|
+| `ProsusAI/finbert` | Local (your machine) | Classification pipeline |
+| `yiyanghkust/finbert-tone` | HuggingFace Inference API | REST classification |
+
+The demo shows both scores side-by-side with a **MATCH** (green) or **DIVERGE** (amber) consensus badge — convergence across models increases signal confidence.
+
+### Neural Core Demo
+- **Command Bar** — Spotlight-style floating input; type any ticker and press Enter
+- **Live Mode** — connects to `localhost:8000`, streams real agent logs to terminal
+- **Demo Mode** — fully animated mock run, works with no backend
+- **Provider Switcher** — toggle Ollama ↔ HuggingFace; selector populated from `.env` via `GET /config`
+- **Correlation Heatmap** — colour-coded peer correlation grid (green → amber → red)
+- **Revenue Sparkline** — quarterly revenue bar chart with QoQ delta
+- **Reflection Badges** — triggered quality checks shown inline with the report
+
+### Background Monitoring
+Register any ticker for continuous monitoring:
+```bash
+curl -X POST http://localhost:8000/monitor_start \
+  -d '{"ticker": "TSLA", "cadence_hours": 24}'
+```
+M.I.R.A. checks every hour and fires a `PROACTIVE_ALERT` analysis job when:
+- Price deviates more than 2σ from the 30-day mean
+- Volume exceeds 2× the 30-day baseline
+- No article baseline has been established yet
+
+---
+
+## Project Structure
+
+```
+mira/
+├── api/
+│   ├── main.py          # FastAPI app factory, CORS, startup hooks
+│   ├── routes.py        # All REST endpoints incl. GET /config
+│   └── models.py        # Pydantic request/response models
+│
+├── agent/
+│   ├── core.py          # AgentCore: Plan → Execute → Reflect → Synthesise
+│   ├── planner.py       # LLM-powered JSON plan generation
+│   ├── executor.py      # Tool dispatcher with budget enforcement + logging
+│   └── reflection.py    # Rule-based + LLM quality evaluation
+│
+├── tools/
+│   ├── market_data.py       # yfinance: price, fundamentals, 52W range, revenue
+│   ├── news_sentiment.py    # NewsAPI + local FinBERT pipeline
+│   ├── peer_correlation.py  # Pearson correlations vs S&P500, sector ETF, peers
+│   └── hf_sentiment.py      # HuggingFace Inference API sentiment (finbert-tone)
+│
+├── monitoring/
+│   ├── scheduler.py     # Background thread, hourly cadence
+│   └── triggers.py      # PRICE_DEVIATION / VOLUME_SPIKE / NEW_ARTICLES rules
+│
+├── storage/
+│   ├── redis_client.py  # Job state, logs, token usage, monitoring state
+│   └── models.py        # JobLog Pydantic model
+│
+├── utils/
+│   ├── config.py        # Pydantic-settings; all .env fields in one place
+│   ├── llm_client.py    # Provider router: HF / Ollama / OpenAI → AsyncOpenAI
+│   └── agent_logger.py  # Structured JSON logs + token cost tracking
+│
+├── tests/
+│   └── test_agent.py    # 4 test cases (3 integration + 1 unit)
+│
+├── demo.html            # Neural Core demo (single-file, no build step)
+├── sample_output.json   # Example completed report
+├── docker-compose.yml
+├── Dockerfile
+├── requirements.txt
+└── .env.example
+```
 
 ---
 
 ## Setup & Run
 
 ### Prerequisites
-- Docker ≥ 24 and Docker Compose V2, **or** Python 3.11+ with Redis running locally.
 
-### Quick Start (Docker – recommended)
+- Python 3.11+ **or** Docker ≥ 24 + Docker Compose V2
+- Redis 7 (included in Docker Compose; or `brew install redis` locally)
+- A HuggingFace account and token for cloud inference *(free tier works)*
+
+### 1 — Clone & Configure
 
 ```bash
-# 1. Clone and enter the directory
-git clone https://github.com/Ahmed-El-Zainy/mira.git && cd mira
-
-# 2. Configure secrets
+git clone https://github.com/Ahmed-El-Zainy/mira.git
+cd mira
 cp .env.example .env
-#   → Fill in OPENAI_API_KEY and NEWS_API_KEY
-
-# 3. Build and run
-docker compose up --build
-
-# The API is now available at http://localhost:8000
-# Interactive docs: http://localhost:8000/docs
 ```
 
-### Local Python (no Docker)
+Open `.env` and fill in your keys:
 
 ```bash
+# ── LLM Provider (pick one) ────────────────────────────────────────────────────
+LLM_PROVIDER=hf                   # "hf" | "ollama" | "openai"
+
+# HuggingFace (recommended — free tier)
+HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxx
+LLM_HF_MODEL_ID=Qwen/Qwen3.6-35B-A3B:deepinfra   # any HF Router-compatible model
+HF_BASE_URL=https://router.huggingface.co/v1
+
+# Ollama (local, zero cost)
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=lfm2.5-thinking:1.2b
+
+# OpenAI (best JSON-mode support)
+OPENAI_API_KEY=sk-xxxxxxxxxxxx
+LLM_MODEL=gpt-4o
+
+# ── Sentiment (HF classification model — separate from the LLM) ────────────────
+HF_MODEL_ID=yiyanghkust/finbert-tone
+
+# ── Data sources ───────────────────────────────────────────────────────────────
+NEWS_API_KEY=xxxxxxxxxxxx          # newsapi.org free tier
+
+# ── Redis ──────────────────────────────────────────────────────────────────────
+REDIS_HOST=localhost
+REDIS_PORT=6379
+```
+
+### 2A — Docker (recommended)
+
+```bash
+docker compose up --build
+```
+
+API available at `http://localhost:8000` · Demo at `http://localhost:8000/`
+
+### 2B — Local Python
+
+```bash
+# Create virtualenv
 python -m venv .venv && source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
-cp .env.example .env   # fill in keys
-# Ensure Redis is running locally (default port 6379)
+
+# Fix NumPy compatibility (if you see "ARRAY_API not found")
+pip install "numpy<2"
+
+# Start Redis (if not already running)
+redis-server --daemonize yes
+
+# Start the API
 uvicorn api.main:app --reload
 ```
 
-### Running Tests
+### 3 — Verify
 
 ```bash
-pytest -v
-```
+# Health check
+curl http://localhost:8000/health
+# → {"status": "ok", "redis": true}
 
-> Integration tests require Redis. Unit tests (e.g., `test_market_data_tool_raises_on_bad_ticker`) run without it.
+# Config (confirms .env is loaded correctly)
+curl http://localhost:8000/config
+# → {"llm_provider": "hf", "ollama_model": "...", "hf_model_id": "Qwen/...", ...}
+
+# Run an analysis
+curl -X POST http://localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Analyse Alphabet Inc. (GOOGL)"}'
+# → {"job_id": "abc-123", "status": "queued", "progress": 0}
+```
 
 ---
 
-## API Usage
+## API Reference
 
-### Submit an analysis
+### `POST /analyze`
+Submit a natural-language analysis query. Returns a `job_id` immediately; processing runs in the background.
+
 ```bash
 curl -X POST http://localhost:8000/analyze \
   -H "Content-Type: application/json" \
   -d '{"query": "Analyse the near-term prospects of Tesla, Inc. (TSLA)."}'
-# → {"job_id": "abc-123", "status": "queued", "progress": 0}
+```
+```json
+{"job_id": "550e8400-...", "status": "queued", "progress": 0, "tool_calls_used": 0}
 ```
 
-### Poll status / get result
+### `GET /status/{job_id}`
+Poll for progress and retrieve the completed report.
+
 ```bash
-curl http://localhost:8000/status/abc-123
-# → {"status": "completed", "progress": 100, "result": {...}}
+curl http://localhost:8000/status/550e8400-...
+```
+```json
+{
+  "status": "completed",
+  "progress": 100,
+  "result": {
+    "company_ticker": "TSLA",
+    "sentiment_score": 0.21,
+    "hf_sentiment_score": 0.18,
+    "market_snapshot": { "price": 245.67, "pe_ratio": 65.4, ... },
+    "correlation_analysis": { "sector_etf": "XLY", "sector_correlation": 0.89, ... },
+    "key_findings": ["...", "...", "..."],
+    "reflection": { "triggers_fired": [], "reasoning": "All checks passed." }
+  }
+}
 ```
 
-### View structured logs + token usage
+**Status values:** `queued` → `planning` → `executing` → `reflecting` → `re-planning` → `synthesising` → `completed` | `failed`
+
+### `GET /logs/{job_id}`
+Structured per-tool logs with timing and token cost.
+
 ```bash
-curl http://localhost:8000/logs/abc-123
+curl http://localhost:8000/logs/550e8400-...
+```
+```json
+{
+  "logs": [
+    {"tool_name": "market_data", "latency_ms": 3307, "success": true, ...},
+    {"tool_name": "news_sentiment", "latency_ms": 3228, "success": true, ...},
+    {"tool_name": "peer_correlation", "latency_ms": 408, "success": true, ...}
+  ],
+  "token_usage": {"total_tokens": 6843, "estimated_cost_usd": 0.079}
+}
 ```
 
-### Start persistent monitoring
+### `GET /config`
+Returns active LLM configuration from `.env` — used by the demo to populate the model selector without any hardcoded model IDs.
+
+```bash
+curl http://localhost:8000/config
+```
+```json
+{
+  "llm_provider": "hf",
+  "ollama_model": "lfm2.5-thinking:1.2b",
+  "hf_model_id": "Qwen/Qwen3.6-35B-A3B:deepinfra",
+  "hf_sentiment_model": "yiyanghkust/finbert-tone"
+}
+```
+
+### `POST /monitor_start`
+Register a ticker for persistent background monitoring.
+
 ```bash
 curl -X POST http://localhost:8000/monitor_start \
   -H "Content-Type: application/json" \
   -d '{"ticker": "TSLA", "cadence_hours": 24}'
 ```
 
+### `GET /health`
+```bash
+curl http://localhost:8000/health
+# → {"status": "ok", "redis": true}
+```
+
+Interactive docs at `http://localhost:8000/docs` (Swagger UI).
+
 ---
 
-## Evaluation Framework (Section 3.D)
+## Report Schema
 
-### Test Cases (3 documented)
+Every completed analysis returns this JSON structure:
 
-| # | Input | Expected behaviour |
-|---|-------|--------------------|
-| 1 | `"Analyse Apple Inc. (AAPL)"` | `correlation_analysis.all_correlations["AAPL"] == 1.0` (self-correlation identity) |
-| 2 | `"Analyse ZZZZZ99_UNKNOWN_TICKER_XYZ"` | `status == "failed"`, error contains "not found" – no hallucinated report |
-| 3 | `"Analyse Toys R Us (TOY)"` | `status == "failed"`, error indicates ticker unavailable/delisted |
+```json
+{
+  "company_ticker":    "GOOGL",
+  "company_name":      "Alphabet Inc.",
+  "analysis_summary":  "3–5 sentence synthesis...",
 
-### Measuring Agent Quality at Scale
+  "sentiment_score":    0.0,    // Local FinBERT  (-1.0 → 1.0)
+  "hf_sentiment_score": 0.18,   // HF Cloud model (-1.0 → 1.0)
 
-Evaluating M.I.R.A. at scale requires a multi-layered approach because a single metric can mask failure modes that only surface in production.
+  "market_snapshot": {
+    "price":              400.80,
+    "daily_change_pct":   0.71,
+    "market_cap":         4855869472768,
+    "pe_ratio":           30.57,
+    "52w_high":           402.00,
+    "52w_low":            151.67,
+    "quarterly_revenues": [109896000000, 113829000000]
+  },
 
-**Ground-truth comparisons.** For a rolling weekly sample of analyses, compare M.I.R.A.'s directional sentiment prediction against the stock's actual 5-day return. A well-calibrated agent should show statistically significant correlation (p < 0.05) for positive-sentiment reports. Compare key findings against Bloomberg/FactSet analyst summaries for coverage overlap.
+  "correlation_analysis": {
+    "market_correlation":  0.5493,
+    "sector_etf":          "XLC",
+    "sector_correlation":  0.5489,
+    "peer_correlations":   {"META": 0.2274, "NFLX": 0.0854},
+    "all_correlations":    {"GOOGL": 1.0, "^GSPC": 0.5493, ...}
+  },
 
-**LLM-as-Judge.** Deploy a separate GPT-4o instance (different temperature, different system prompt) to score each report on four rubrics scored 1–5: (a) factual grounding (are all claims traceable to a cited source?), (b) coherence and logical flow, (c) completeness against the required schema, (d) actionability of key findings. Track p50/p95 scores over time and alert on regressions.
+  "key_findings":     ["...", "...", "..."],
+  "tools_used":       ["market_data", "news_sentiment", "peer_correlation", "hf_sentiment"],
+  "citation_sources": ["https://...", "https://..."],
+  "generated_at":     "2026-05-09T18:37:57Z",
 
-**Regression test suite.** Maintain a curated suite of ~50 tickers spanning normal, volatile, delisted, and data-sparse cases. Run it on every model or prompt change in CI. Gate merges on zero new failures and < 5% degradation in LLM-Judge scores.
+  "reflection": {
+    "triggers_fired": ["STALE_NEWS", "NEUTRAL_SENT"],
+    "reasoning":      "Re-research triggered due to flat sentiment and stale articles."
+  }
+}
+```
 
-**Financial backtesting.** For historical analyses, evaluate whether acting on M.I.R.A.'s `key_findings` outperformed a buy-and-hold SPY benchmark over a 5-day window. Apply Sharpe-ratio and maximum-drawdown constraints to avoid overfitting on lucky calls.
+---
 
-**Operational & cost metrics.** Track p99 latency per job, tool-call budget utilisation, failure rate by failure category (timeout / bad ticker / LLM error), and estimated cost per analysis. Alert when cost > $0.50/job or failure rate > 2%.
+## LLM Provider Configuration
 
-By combining these five lenses – ground truth, judge model, regression suite, backtest, and operational metrics – we get a comprehensive and honest picture of agent quality that scales with usage volume.
+M.I.R.A. uses a single `AsyncOpenAI`-compatible client for all three providers. Switch by changing `LLM_PROVIDER` in `.env` — no code changes required.
+
+### HuggingFace (default)
+
+```bash
+LLM_PROVIDER=hf
+HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxx
+LLM_HF_MODEL_ID=Qwen/Qwen3.6-35B-A3B:deepinfra
+HF_BASE_URL=https://router.huggingface.co/v1
+```
+
+Recommended HF Router models for financial reasoning (tested):
+
+| Model | Size | Notes |
+|-------|------|-------|
+| `Qwen/Qwen3.6-35B-A3B:deepinfra` | 35B MoE | Best JSON quality; used in production logs |
+| `mistralai/Mistral-7B-Instruct-v0.3` | 7B | Fast, reliable JSON |
+| `mistralai/Mixtral-8x7B-Instruct-v0.1` | 8×7B MoE | Strong reasoning, higher cost |
+| `HuggingFaceH4/zephyr-7b-beta` | 7B | Good instruction following |
+
+### Ollama (local, zero cost)
+
+```bash
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=lfm2.5-thinking:1.2b
+```
+
+Recommended local models:
+
+| Model | Size | Notes |
+|-------|------|-------|
+| `lfm2.5-thinking:1.2b` | 1.2B | Lightest; chain-of-thought reasoning |
+| `qwen3.5:4b` | 3.4GB | Best quality/size ratio |
+| `qwen3.5:latest` | 6.6GB | Best local reasoning + JSON |
+| `gemma4:e2b` | 7.2GB | Good alternative |
+
+> **Avoid** `ministral-3:3b`, `granite4:3b` — too weak for structured planning. Avoid `qwen2.5-coder:*` — code-focused, poor at financial reasoning.
+
+### OpenAI
+
+```bash
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-xxxxxxxxxxxx
+LLM_MODEL=gpt-4o
+```
+
+---
+
+## Known Issues & Fixes
+
+### NumPy 2.x Compatibility
+
+If you see `_ARRAY_API not found` in logs, your system NumPy (2.x) is incompatible with the compiled extensions in `torch`, `scipy`, and `transformers`:
+
+```bash
+pip install "numpy<2"
+```
+
+This is a known upstream issue. The `news_sentiment` tool gracefully catches the error and falls back to neutral scores (0.0) so the pipeline continues — you will see this warning in logs:
+
+```
+Local FinBERT failed: numpy.core.multiarray failed to import. Falling back to neutral scores.
+```
+
+The HuggingFace cloud sentiment (`hf_sentiment`) is unaffected.
+
+### FinBERT First Run
+
+The local FinBERT model (`ProsusAI/finbert`) is ~500MB and downloads on first use. Subsequent runs use the cached model. Set `HF_HOME` to control the cache location:
+
+```bash
+export HF_HOME=/path/to/fast/disk/.cache/huggingface
+```
+
+---
+
+## Evaluation Framework
+
+### Test Suite
+
+Four tests cover the critical failure modes:
+
+```bash
+pytest -v
+```
+
+| # | Test | Input | Expected |
+|---|------|-------|----------|
+| 1 | Self-correlation identity | `"Analyse Apple Inc. (AAPL)"` | `all_correlations["AAPL"] == 1.0` |
+| 2 | Unknown ticker → graceful error | `"Analyse ZZZZZ99_UNKNOWN"` | `status == "failed"`, error contains "not found" |
+| 3 | Delisted ticker → graceful failure | `"Analyse Toys R Us (TOY)"` | `status == "failed"`, no hallucinated report |
+| 4 | Unit — bad ticker raises `ValueError` | `MarketDataTool.execute("ZZZZZ99")` | `ValueError` with "not found" message |
+
+Tests 1–3 require Redis. Test 4 runs standalone.
+
+### Measuring Quality at Scale
+
+Five complementary lenses for production quality assessment:
+
+**Ground-truth comparison** — compare M.I.R.A.'s directional sentiment prediction against the stock's actual 5-day return on a rolling weekly sample. A well-calibrated agent should show statistically significant correlation (p < 0.05) for positive-sentiment reports.
+
+**LLM-as-Judge** — deploy a separate model instance to score each report 1–5 on: factual grounding (claims traceable to cited sources), coherence, schema completeness, and actionability of key findings. Track p50/p95 over time and alert on regressions.
+
+**Regression suite** — maintain ~50 curated tickers spanning normal, volatile, delisted, and data-sparse cases. Run on every prompt or model change in CI. Gate merges on zero new failures.
+
+**Financial backtesting** — for historical analyses, evaluate whether acting on `key_findings` outperformed buy-and-hold SPY over a 5-day window. Apply Sharpe ratio and maximum-drawdown constraints.
+
+**Operational metrics** — track p99 latency per job, tool-call budget utilisation, failure rate by category (timeout / bad ticker / LLM error), and cost per analysis. Alert when cost > $0.50/job or failure rate > 2%.
 
 ---
 
 ## Known Limitations
 
-1. **yfinance data freshness.** yfinance scrapes Yahoo Finance and can have 15-minute delays or stale fundamental data for less-liquid stocks. A premium provider (Polygon.io, Refinitiv) is recommended for production.
-2. **FinBERT context window.** Input is truncated to 512 tokens (title + description). Long earnings-call transcripts will be clipped; LLM-based sentiment is better for that use case.
-3. **Peer selection heuristic.** Default peers are sector-based, not company-specific. Production should use GICS sub-industry classification or competitor datasets.
-4. **NewsAPI.org free tier rate limit.** 100 requests/day. High-throughput use requires a paid plan or an alternative (Marketaux, Finnhub news endpoint).
-5. **Monitoring cadence granularity.** The default scheduler checks tickers hourly; intraday events between checks may be missed. A streaming approach (WebSocket feeds) is needed for sub-hourly monitoring.
-6. **Single-worker concurrency.** Background tasks run in FastAPI's thread pool. Under high load, a dedicated task queue (Celery + Redis as broker, multiple workers) is required.
-7. **LLM hallucination risk.** Even with strict JSON-mode prompts, the synthesis step may occasionally misstate values. All numeric claims in the report should be verified against the raw tool outputs stored in Redis.
-8. **Time-zone handling.** All timestamps are UTC. Front-end or downstream consumers must handle localisation.
-9. **Cost estimation accuracy.** Token cost estimates use list pricing; actual charges may differ with batch discounts, prompt caching, or model updates.
-10. **No authentication layer.** The API has no auth/rate-limiting by default. Add OAuth2 or API-key middleware before any public deployment.
+1. **yfinance data freshness** — 15-minute delay; stale fundamentals on illiquid stocks. Use Polygon.io or Refinitiv for production.
+2. **FinBERT context window** — input truncated to 512 tokens. Long earnings transcripts get clipped; use LLM-based sentiment for those.
+3. **Peer selection heuristic** — sector-based defaults, not company-specific. Use GICS sub-industry or a competitor dataset for accuracy.
+4. **NewsAPI free tier** — 100 requests/day. High-throughput use needs a paid plan or Finnhub/Marketaux.
+5. **NumPy 2.x incompatibility** — local FinBERT fails silently; pin `numpy<2` until upstream wheels are rebuilt.
+6. **Single-worker concurrency** — background tasks share FastAPI's thread pool. Use Celery + Redis broker for production scale.
+7. **LLM hallucination risk** — even with strict prompts, numeric synthesis may drift. All values in the report should be verified against raw tool outputs in Redis.
+8. **No authentication** — API has no auth or rate-limiting. Add OAuth2 or API-key middleware before any public deployment.
+9. **Monitoring granularity** — hourly checks miss intraday events. A WebSocket streaming approach is needed for sub-hourly monitoring.
+10. **Cost estimation** — uses list pricing; actual charges differ with batch discounts or prompt caching.
+
+---
+
+## Contributing
+
+```bash
+# Fork → branch → commit → PR
+
+# Run tests before submitting
+pytest -v
+
+# Check formatting
+ruff check .
+```
+
+Please open an issue before submitting large changes.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+---
+
+<div align="center">
+
+Built with FastAPI · HuggingFace · FinBERT · yfinance · Redis · Chart.js
+
+*M.I.R.A. is for research and educational purposes only.*
+*Nothing in this project constitutes financial advice.*
+
+</div>
