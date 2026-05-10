@@ -163,21 +163,22 @@ def _banner() -> None:
 @app.command()
 def analyze(
     query: str = typer.Argument(..., help="Natural-language analysis query."),
-    watch: bool = typer.Option(
-        True, "--watch/--no-watch",
-        help="Poll until completion and render the report.",
+    no_watch: bool = typer.Option(
+        False, "--no-watch",
+        help="Submit-and-forget. Default is to poll until completion.",
     ),
     poll_interval: float = typer.Option(
         1.5, "--interval", help="Seconds between status polls.",
     ),
     timeout: int = typer.Option(
-        300, "--timeout", help="Max seconds to wait for completion (with --watch).",
+        300, "--timeout", help="Max seconds to wait for completion.",
     ),
     save: Optional[Path] = typer.Option(
         None, "--save", help="Write the final report JSON to this path.",
     ),
 ) -> None:
     """Submit an analysis query and (optionally) wait for the report."""
+    watch = not no_watch
     _banner()
 
     if state.local:
@@ -625,8 +626,8 @@ def jobs(limit: int = typer.Option(20, "--limit", help="Max jobs to show.")) -> 
 # ╰─────────────────────────────────────────────────────────────────────────────╯
 @app.command()
 def ui(
-    open_browser: bool = typer.Option(
-        True, "--open/--no-open", help="Open the demo in your default browser."
+    no_open: bool = typer.Option(
+        False, "--no-open", help="Just print the demo URL instead of opening a browser.",
     ),
 ) -> None:
     """Open the Neural Core demo in your browser (the API must be running).
@@ -653,11 +654,11 @@ def ui(
             "  docker compose up --build\n"
         )
 
-    if open_browser:
+    if no_open:
+        console.print(f"[cyan]→[/cyan] Demo URL: {url}")
+    else:
         console.print(f"[cyan]→[/cyan] Opening {url}")
         webbrowser.open(url)
-    else:
-        console.print(f"[cyan]→[/cyan] Demo URL: {url}")
 
 
 @app.command()

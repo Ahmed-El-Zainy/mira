@@ -260,26 +260,49 @@ Open [http://localhost:8000/](http://localhost:8000/) — the **Neural Core demo
 loads directly** at the root path (no `/demo.html` suffix needed). The same
 HTML is also served at `/demo`. Swagger docs live at `/docs`.
 
-### 2B — Local Python
+### 2B — Local Python (3.11+)
+
+#### Option 1 — `venv` (Linux / macOS / Windows)
 
 ```bash
-# Create virtualenv
-python -m venv .venv && source .venv/bin/activate
+# 1. Create a Python 3.11 virtual environment
+python3.11 -m venv .venv
+# Linux / macOS
+source .venv/bin/activate
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
 
-# Install dependencies
-pip install -r requirements.txt
+# 2. Install runtime + CLI as a single package
+pip install -e ".[full]"          # heavy ML stack (torch, transformers, yfinance, …)
+# or, if you only need the CLI to talk to a remote server:
+pip install -e .
 
-# Fix NumPy compatibility (if you see "ARRAY_API not found")
-pip install "numpy<2"
-
-# Start Redis (if not already running)
+# 3. Start Redis (if not already running)
 redis-server --daemonize yes
 
-# Start the API (demo loads at http://localhost:8000/ directly)
+# 4. Boot the API + open the demo in your browser
+mira serve --reload --open        # http://localhost:8000/ → Neural Core demo
+# or the classic uvicorn invocation
 uvicorn api.main:app --reload
-# or, equivalently, via the CLI:
+```
+
+#### Option 2 — Conda
+
+```bash
+conda create -n mira python=3.11 -y
+conda activate mira
+pip install -e ".[full]"
 mira serve --reload --open
 ```
+
+> **Note.** The `mira` console-script becomes available as soon as
+> `pip install -e .` finishes — no need to add anything to `PATH` manually.
+> If `mira` is "command not found", you're not in the activated env that
+> installed it.
+
+> **NumPy 2.x crash?** The `[full]` extra already pins `numpy<2`. If you
+> installed via `requirements.txt` and you see `ARRAY_API not found`, run
+> `pip install "numpy<2"`.
 
 ### 3 — Verify
 
@@ -330,6 +353,7 @@ mira serve --reload --open       # http://localhost:8000/  ← Neural Core demo
 
 # Open the demo against an already-running server
 mira ui                          # opens http://localhost:8000/
+mira ui --no-open                # just print the URL
 mira --api http://prod:8000 ui   # against a remote deployment
 
 # Run a one-shot analysis against a running API and stream progress
@@ -338,7 +362,7 @@ mira analyze "Analyse Tesla, Inc. (TSLA)"
 # Same thing, but without an API server (Redis still required)
 mira analyze "Analyse Apple (AAPL)" --local --save aapl.json
 
-# Submit-and-forget (returns the job_id immediately)
+# Submit-and-forget (returns the job_id immediately, doesn't wait for the report)
 mira analyze "Analyse NVDA" --no-watch
 
 # Inspect a job
@@ -704,3 +728,15 @@ Built with FastAPI · HuggingFace · FinBERT · yfinance · Redis · Chart.js
 *Nothing in this project constitutes financial advice.*
 
 </div>
+
+<!-- CHECKPOINT id="ckpt_mozj8wzn_2dst12" time="2026-05-10T08:50:31.043Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozjlryg_zs20hc" time="2026-05-10T09:00:31.048Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozjymx9_l30v5g" time="2026-05-10T09:10:31.053Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozkbhwb_hle80a" time="2026-05-10T09:20:31.067Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozkocuv_aef7z1" time="2026-05-10T09:30:31.063Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozl17tx_z5lhlk" time="2026-05-10T09:40:31.077Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
