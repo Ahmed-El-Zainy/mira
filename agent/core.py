@@ -1,8 +1,10 @@
 """agent/core.py – main orchestrator: plan → execute → reflect → synthesise."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -15,6 +17,41 @@ from utils.llm_client import clean_llm_response, get_llm_client, get_model_name,
 from utils.agent_logger import AgentLogger
 
 _settings = get_settings()
+_TICKER_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
+
+
+_COMMON_WORDS = {
+    "ANALYZE", "ANALYSE", "ANALYSIS", "STOCK", "STOCKS", "TICKER", "PLEASE",
+    "REPORT", "ABOUT", "TELL", "SHOW", "WHAT", "WHATS", "PRICE", "QUOTE",
+    "BUY", "SELL", "HOLD", "INC", "CORP", "LTD", "LLC", "AND", "OR", "THE",
+    "FOR", "WITH", "FROM", "INTO", "ON", "OF", "TO", "IN", "IS", "ARE",
+    "DO", "I", "ME", "MY", "YOU", "WE", "US", "AN", "A",
+}
+
+
+def _coerce_ticker(plan_ticker: Any, query: str) -> str:
+    """Best-effort ticker extraction.
+
+    Small fallback models (e.g. qwen2.5:0.5b) sometimes return an empty or
+    junk ticker. We try in order:
+      1. The planner's value if it looks like a ticker.
+      2. Any ALL-CAPS short token in the original query (likely a symbol).
+      3. The first non-stopword token, upper-cased.
+    """
+    candidate = (str(plan_ticker or "")).strip().upper()
+    if _TICKER_RE.match(candidate) and candidate not in _COMMON_WORDS:
+        return candidate
+
+    raw_tokens = re.findall(r"[A-Za-z][A-Za-z0-9.\-]{0,9}", query or "")
+    for token in raw_tokens:
+        if token.isupper() and _TICKER_RE.match(token) and token not in _COMMON_WORDS:
+            return token
+
+    for token in raw_tokens:
+        token_u = token.upper()
+        if _TICKER_RE.match(token_u) and token_u not in _COMMON_WORDS:
+            return token_u
+    return ""
 
 _SYNTHESIS_SYSTEM = """
 You are M.I.R.A., an expert AI financial analyst. Using ONLY the structured data
@@ -71,13 +108,31 @@ class AgentCore:
 
     # ── public entry point ────────────────────────────────────────────────────
     async def run_analysis(self, job_id: str, query: str, tag: str = "") -> None:
+        job_timeout = max(30, _settings.job_timeout_seconds)
         try:
-            await self._run(job_id, query, tag)
-        except Exception as exc:
+            await asyncio.wait_for(self._run(job_id, query, tag), timeout=job_timeout)
+        except asyncio.TimeoutError:
+            self._redis.update_job_status(
+                job_id,
+                {
+                    "status": "failed",
+                    "error": f"Job exceeded {job_timeout}s wall-clock timeout.",
+                    "progress": 0,
+                },
+            )
+            logging.warning("Job %s timed out after %ds.", job_id, job_timeout)
+        except asyncio.CancelledError:
+            self._redis.update_job_status(
+                job_id,
+                {"status": "failed", "error": "Job cancelled.", "progress": 0},
+            )
+            raise
+        except BaseException as exc:
             self._redis.update_job_status(
                 job_id,
                 {"status": "failed", "error": str(exc), "progress": 0},
             )
+            logging.exception("Job %s failed: %s", job_id, exc)
 
     # ── private pipeline ──────────────────────────────────────────────────────
     async def _run(self, job_id: str, query: str, tag: str) -> None:
@@ -85,8 +140,15 @@ class AgentCore:
         self._redis.update_job_status(job_id, {"status": "planning", "progress": 10})
         plan = await self._planner.create_initial_plan(query)
 
-        ticker  = plan.get("ticker", "UNKNOWN").upper()
-        company = plan.get("company", ticker)
+        ticker = _coerce_ticker(plan.get("ticker"), query)
+        company = (plan.get("company") or ticker or query or "").strip()
+        if not ticker:
+            raise ValueError(
+                "Could not determine a ticker symbol from your query. "
+                "Try entering a US-listed symbol like AAPL, TSLA, or MSFT."
+            )
+        plan["ticker"] = ticker
+        plan["company"] = company
 
         # 2. Execute initial plan
         self._redis.update_job_status(job_id, {"status": "executing", "progress": 30})
@@ -156,13 +218,24 @@ class AgentCore:
 
         resp = await self._client.chat.completions.create(**kwargs)
 
+        # If the FallbackLLMClient routed through the fallback provider, the
+        # response carries `_mira_provider` / `_mira_model`. Log against the
+        # actual answering model so token-usage attribution is accurate.
+        actual_model = getattr(resp, "_mira_model", self._model)
+        actual_provider = getattr(resp, "_mira_provider", None)
+        if getattr(resp, "_mira_failover", False):
+            logging.info(
+                "Synthesis used FALLBACK provider %s (%s) — primary unavailable.",
+                actual_provider, actual_model,
+            )
+
         usage = resp.usage
         if usage:
             self._logger.log_token_usage(
                 job_id=ticker,
                 prompt_tokens=usage.prompt_tokens,
                 completion_tokens=usage.completion_tokens,
-                model=self._model,
+                model=actual_model,
             )
 
         raw    = clean_llm_response(resp.choices[0].message.content)

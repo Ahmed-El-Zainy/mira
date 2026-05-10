@@ -47,6 +47,25 @@ def _get_pipeline():
         raise RuntimeError(f"FinBERT initialization failed: {str(e)}")
 
 
+async def preload_finbert() -> None:
+    """Warm up FinBERT in a background thread so the first /analyze isn't
+    blocked on the ~500MB model download. Safe to call multiple times — the
+    `lru_cache` on `_get_pipeline` makes subsequent calls free.
+
+    Errors are swallowed (just logged) — sentiment analysis will fall back to
+    neutral scores if the download ultimately fails.
+    """
+    def _warm() -> None:
+        try:
+            t0 = time.time()
+            _get_pipeline()
+            logger.info("FinBERT preloaded in %.1fs.", time.time() - t0)
+        except Exception as exc:
+            logger.warning("FinBERT preload failed: %s", exc)
+
+    await asyncio.to_thread(_warm)
+
+
 def _article_id(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:12]
 

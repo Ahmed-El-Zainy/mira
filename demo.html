@@ -497,9 +497,12 @@ async function loadConfig() {
     currentProvider = (envProvider === 'hf' || envProvider === 'ollama') ? envProvider : 'ollama';
 
     cfgStatus.innerHTML = '<span style="color:var(--green)">● CONFIG LOADED</span>';
-    termLog('ok',  `Config loaded from ${API_BASE || 'same-origin'} — provider: ${cfg.llm_provider}`);
+    termLog('ok',  `Config loaded from ${API_BASE || 'same-origin'} — primary: ${cfg.llm_provider}`);
     termLog('data', `LLM model:       ${cfg.ollama_model || cfg.hf_model_id || '(unset)'}`);
     termLog('hf',   `HF sentiment:    ${hfSentimentModel}`);
+    if (cfg.llm_fallback_provider && cfg.llm_fallback_provider !== 'none' && cfg.llm_fallback_provider !== cfg.llm_provider) {
+      termLog('sys', `Fallback ready:  ${cfg.llm_fallback_provider} (used automatically when primary fails)`);
+    }
     // Auto-enable LIVE mode when the backend is reachable.
     if (!isLive) {
       isLive = true;

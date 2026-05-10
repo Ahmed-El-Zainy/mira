@@ -538,6 +538,41 @@ Every completed analysis returns this JSON structure:
 
 M.I.R.A. uses a single `AsyncOpenAI`-compatible client for all three providers. Switch by changing `LLM_PROVIDER` in `.env` — no code changes required.
 
+### Automatic fallback (HF → Ollama)
+
+When the primary provider errors out (network blip, HF Router 5xx, rate limit,
+timeout, etc.) the agent transparently retries the same call against the
+provider configured in `LLM_FALLBACK_PROVIDER` — defaults to `ollama` so you
+get a free, local safety net.
+
+```bash
+# .env
+LLM_PROVIDER          = hf            # primary
+LLM_FALLBACK_PROVIDER = ollama        # used only when primary fails
+OLLAMA_MODEL          = qwen2.5:0.5b  # whichever model you `ollama pull`-ed
+LLM_HF_MODEL_ID       = Qwen/Qwen3.6-35B-A3B:deepinfra
+```
+
+Set `LLM_FALLBACK_PROVIDER=none` (or empty) to disable the fallback.
+
+What happens at runtime:
+
+```
+[INFO]  LLM client initialised: primary=hf/Qwen/...  fallback=ollama/qwen2.5:0.5b
+... call to HF Router fails ...
+[WARN]  Primary LLM (hf/Qwen/...) failed: ConnectTimeout — falling back to ollama/qwen2.5:0.5b.
+... agent continues, reports a successful result ...
+```
+
+Notes:
+- The fallback is checked at startup (`ensure_fallback_ready`) and you'll see a
+  warning at boot if the model isn't installed locally — fix it with
+  `ollama pull qwen2.5:0.5b`.
+- `response_format={"type": "json_object"}` is automatically dropped on
+  fallback if the fallback provider isn't OpenAI (Ollama JSON-mode support
+  varies by model).
+
+
 ### HuggingFace (default)
 
 ```bash
@@ -740,3 +775,23 @@ Built with FastAPI · HuggingFace · FinBERT · yfinance · Redis · Chart.js
 <!-- CHECKPOINT id="ckpt_mozkocuv_aef7z1" time="2026-05-10T09:30:31.063Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
 
 <!-- CHECKPOINT id="ckpt_mozl17tx_z5lhlk" time="2026-05-10T09:40:31.077Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozle2tb_vilz2o" time="2026-05-10T09:50:31.103Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozlqxrt_33loqc" time="2026-05-10T10:00:31.097Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozm3sqq_3csh6g" time="2026-05-10T10:10:31.106Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozmgnpv_aqvo52" time="2026-05-10T10:20:31.123Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozmtip4_3xyqyn" time="2026-05-10T10:30:31.144Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozn6dnr_g6ghpj" time="2026-05-10T10:40:31.143Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_moznj8n0_1hkmlh" time="2026-05-10T10:50:31.164Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_moznw3lw_gobhah" time="2026-05-10T11:00:31.172Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozsngum_wk6eu7" time="2026-05-10T13:13:46.510Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mozt0bu2_n0f8dl" time="2026-05-10T13:23:46.538Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->

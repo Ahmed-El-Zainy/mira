@@ -120,6 +120,7 @@ async def get_config():
     """
     return {
         "llm_provider": _settings.llm_provider,
+        "llm_fallback_provider": _settings.llm_fallback_provider or "",
         "ollama_model": _settings.ollama_model,
         "hf_model_id": _settings.llm_hf_model_id,
         "hf_sentiment_model": _settings.hf_model_id,

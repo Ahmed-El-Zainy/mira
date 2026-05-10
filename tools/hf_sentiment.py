@@ -84,6 +84,14 @@ class HuggingFaceSentimentTool:
                     logger.warning("HF unexpected response shape: %s — body=%s", exc, resp.text[:200])
                     return 0.0
 
+            if resp.status_code in (401, 402, 403):
+                # Auth, payment-required, or quota — retrying never helps.
+                logger.warning(
+                    "HF Inference API returned %d (auth/quota) — returning neutral score.",
+                    resp.status_code,
+                )
+                return 0.0
+
             if resp.status_code in (503, 429):
                 # Model loading or rate limited — retry with backoff.
                 logger.info(

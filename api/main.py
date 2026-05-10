@@ -33,8 +33,8 @@ logging.basicConfig(
 # ── lifespan replaces the deprecated @app.on_event hooks ────────────────────
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Startup: warm LLM, start monitoring. Shutdown: close shared clients."""
-    from utils.llm_client import ensure_model_ready, get_model_name
+    """Startup: warm LLM (+ fallback), start monitoring. Shutdown: close clients."""
+    from utils.llm_client import ensure_fallback_ready, ensure_model_ready, get_model_name
     model = get_model_name()
 
     ready = await ensure_model_ready()
@@ -42,7 +42,23 @@ async def _lifespan(app: FastAPI):
         logging.info("LLM Provider Ready: %s initialized successfully.", model)
     else:
         logging.error("LLM Readiness Check Failed for %s.", model)
-        logging.warning("Proceeding with caution. Agent may fail on first analysis.")
+        logging.warning(
+            "Proceeding with caution. Agent will attempt the configured "
+            "fallback provider when the primary fails."
+        )
+
+    # Best-effort pre-warm of the fallback (e.g. Ollama) so the first failover
+    # doesn't pay a cold-start penalty.
+    await ensure_fallback_ready()
+
+    # Pre-warm FinBERT in the background so the first /analyze isn't blocked
+    # on a ~500MB model download (transformers caches it on disk afterwards).
+    finbert_task = None
+    if _settings.preload_finbert:
+        import asyncio as _asyncio
+        from tools.news_sentiment import preload_finbert
+        finbert_task = _asyncio.create_task(preload_finbert(), name="preload_finbert")
+        logging.info("FinBERT pre-warm scheduled in background.")
 
     from monitoring.scheduler import MonitoringService
     svc = MonitoringService()
@@ -51,6 +67,8 @@ async def _lifespan(app: FastAPI):
     try:
         yield
     finally:
+        if finbert_task and not finbert_task.done():
+            finbert_task.cancel()
         try:
             from tools.hf_sentiment import aclose_client
             await aclose_client()

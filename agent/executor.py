@@ -126,12 +126,21 @@ class Executor:
         t0 = time.perf_counter()
         success = True
         output: Any = None
+        timeout = max(5, _settings.tool_timeout_seconds)
         try:
             if runner is None:
                 output = {"warning": f"Unknown tool '{tool_name}' – skipped."}
             else:
-                output = await runner()
+                # Hard per-tool timeout so a single hung dependency (e.g. a
+                # cold FinBERT download or a paywalled HF endpoint) cannot
+                # block the whole wave.
+                output = await asyncio.wait_for(runner(), timeout=timeout)
             results[tool_name] = output
+        except asyncio.TimeoutError:
+            success = False
+            output = f"timed out after {timeout}s"
+            results[tool_name] = {"error": output}
+            logger.warning("Tool %s timed out (%ds) for job %s.", tool_name, timeout, job_id)
         except Exception as exc:
             success = False
             output = str(exc)
