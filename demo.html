@@ -348,7 +348,7 @@
           <div class="gauge-divider"></div>
           <div class="gauge-wrap">
             <canvas id="chartCloud" width="130" height="80"></canvas>
-            <div class="gauge-label" id="cloud-label">QWEN CLOUD · ANALYST</div>
+            <div class="gauge-label" id="cloud-label">HF CLOUD · FINBERT-TONE</div>
             <div class="gauge-score" id="score-cloud">—</div>
           </div>
         </div>
@@ -436,6 +436,17 @@
 // Fallback values are used when the backend is not reachable (demo mode)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// API base — same origin when served by FastAPI, fallback to localhost:8000
+// when opened from disk (file://). Override via ?api=http://example.com:8000.
+const API_BASE = (() => {
+  const params = new URLSearchParams(window.location.search);
+  const override = params.get('api');
+  if (override) return override.replace(/\/$/, '');
+  if (window.location.protocol.startsWith('http')) return ''; // same origin → relative
+  return 'http://localhost:8000';
+})();
+const apiUrl = (path) => `${API_BASE}${path}`;
+
 // PROVIDERS is built at runtime from /config; this is the offline fallback.
 const FALLBACK_PROVIDERS = {
   ollama: { label: 'OLLAMA (LOCAL)',     models: [{ id: 'lfm2.5-thinking:1.2b', label: 'lfm2.5-thinking:1.2b' }] },
@@ -447,6 +458,7 @@ let PROVIDERS = FALLBACK_PROVIDERS;
 
 let currentProvider = 'ollama';
 let currentModel    = FALLBACK_PROVIDERS.ollama.models[0].id;
+let hfSentimentModel = 'yiyanghkust/finbert-tone';
 let isLive          = false;
 let chartLocal = null, chartCloud = null, revenueChart = null;
 
@@ -456,7 +468,10 @@ let chartLocal = null, chartCloud = null, revenueChart = null;
 async function loadConfig() {
   const cfgStatus = document.getElementById('cfg-status');
   try {
-    const res = await fetch('http://localhost:8000/config', { signal: AbortSignal.timeout(3000) });
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 3000);
+    const res = await fetch(apiUrl('/config'), { signal: ctrl.signal });
+    clearTimeout(t);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const cfg = await res.json();
 
@@ -464,6 +479,7 @@ async function loadConfig() {
     // cfg shape: { llm_provider, ollama_model, ollama_models, hf_models, hf_model_id, hf_sentiment_model }
     const ollamaModels = (cfg.ollama_models || [cfg.ollama_model]).filter(Boolean);
     const hfModels     = (cfg.hf_models     || [cfg.hf_model_id]).filter(Boolean);
+    hfSentimentModel   = cfg.hf_sentiment_model || hfSentimentModel;
 
     PROVIDERS = {
       ollama: {
@@ -481,17 +497,21 @@ async function loadConfig() {
     currentProvider = (envProvider === 'hf' || envProvider === 'ollama') ? envProvider : 'ollama';
 
     cfgStatus.innerHTML = '<span style="color:var(--green)">● CONFIG LOADED</span>';
-    termLog('ok',  `Config loaded from backend — provider: ${cfg.llm_provider}`);
-    termLog('data', `Ollama models: ${ollamaModels.join(', ') || 'none'}`);
-    termLog('hf',   `HF models: ${hfModels.join(', ') || 'none (set HF_MODELS in .env)'}`);
+    termLog('ok',  `Config loaded from ${API_BASE || 'same-origin'} — provider: ${cfg.llm_provider}`);
+    termLog('data', `LLM model:       ${cfg.ollama_model || cfg.hf_model_id || '(unset)'}`);
+    termLog('hf',   `HF sentiment:    ${hfSentimentModel}`);
+    // Auto-enable LIVE mode when the backend is reachable.
+    if (!isLive) {
+      isLive = true;
+      updateLiveBtn();
+      termLog('ok', 'LIVE mode auto-enabled (backend reachable).');
+    }
   } catch (e) {
-    // Backend offline — keep fallback, show warning
-    cfgStatus.innerHTML = '<span style="color:var(--amber)">● OFFLINE — FALLBACK</span>';
-    termLog('warn', `Backend unreachable (${e.message}) — using fallback config`);
-    termLog('warn', 'Add HF_MODELS=org/model1,org/model2 to .env and restart to see real models');
+    cfgStatus.innerHTML = '<span style="color:var(--amber)">● OFFLINE — DEMO MODE</span>';
+    termLog('warn', `Backend unreachable (${e.message}) — running in demo mode`);
+    termLog('warn', 'Start the API with `uvicorn api.main:app` or `docker compose up`');
   }
 
-  // Render the selector with whatever PROVIDERS we ended up with
   switchProvider(currentProvider);
 }
 
@@ -729,9 +749,10 @@ function renderReport(data) {
   scoreCloudEl.textContent = (cloudScore >= 0 ? '+' : '') + cloudScore.toFixed(2);
   scoreCloudEl.style.color = cloudScore >= 0 ? 'var(--green)' : 'var(--red)';
 
-  // Cloud label reflects current HF model
-  document.getElementById('cloud-label').textContent =
-    currentProvider === 'hf' ? `QWEN CLOUD · ${currentModel.split('/').pop().substring(0,15).toUpperCase()}` : 'QWEN CLOUD · ANALYST';
+  // Cloud label always reflects the actual HF sentiment model used by the agent
+  // (separate from the LLM provider — this is the cloud FinBERT-tone classifier).
+  const labelName = (hfSentimentModel || '').split('/').pop() || 'finbert-tone';
+  document.getElementById('cloud-label').textContent = `HF CLOUD · ${labelName.toUpperCase()}`;
 
   // Consensus badge
   const badge2 = document.getElementById('consensus-badge');
@@ -866,7 +887,7 @@ async function runDemo(query) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// LIVE MODE
+// LIVE MODE — talks to FastAPI + streams /logs as tools complete
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function runLive(query) {
   document.getElementById('terminal-body').innerHTML = '';
@@ -879,7 +900,7 @@ async function runLive(query) {
   termLog('sys', `POST /analyze → "${query}"`);
 
   try {
-    const res = await fetch('http://localhost:8000/analyze', {
+    const res = await fetch(apiUrl('/analyze'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query })
@@ -890,27 +911,68 @@ async function runLive(query) {
     setProgress(15);
 
     let lastStatus = '';
+    let seenLogs = 0;
+    let pollCount = 0;
     while (true) {
-      await sleep(2000);
-      const pollRes = await fetch(`http://localhost:8000/status/${job_id}`);
-      if (!pollRes.ok) { termLog('err', 'Polling failed'); break; }
-      const jobData = await pollRes.json();
+      await sleep(900);
+      pollCount++;
+
+      // Status poll
+      let jobData;
+      try {
+        const pollRes = await fetch(apiUrl(`/status/${job_id}`));
+        if (!pollRes.ok) { termLog('err', 'Polling failed'); break; }
+        jobData = await pollRes.json();
+      } catch (e) {
+        termLog('warn', `Status poll error: ${e.message}`);
+        continue;
+      }
       const st = jobData.status;
       if (st !== lastStatus) {
         termLog('sys', `Status: [${st.toUpperCase()}] · Progress: ${jobData.progress}%`);
         lastStatus = st;
         setProgress(jobData.progress || 0);
       }
+
+      // Tool logs poll (every 2nd cycle to keep it light)
+      if (pollCount % 2 === 0) {
+        try {
+          const logsRes = await fetch(apiUrl(`/logs/${job_id}`));
+          if (logsRes.ok) {
+            const { logs = [] } = await logsRes.json();
+            for (let i = seenLogs; i < logs.length; i++) {
+              renderToolLog(logs[i]);
+            }
+            seenLogs = logs.length;
+          }
+        } catch (_) { /* ignore transient log errors */ }
+      }
+
       if (st === 'completed') {
-        // Attach HF mock score if backend doesn't include it
+        // Final log sweep
+        try {
+          const logsRes = await fetch(apiUrl(`/logs/${job_id}`));
+          if (logsRes.ok) {
+            const { logs = [], token_usage = {} } = await logsRes.json();
+            for (let i = seenLogs; i < logs.length; i++) renderToolLog(logs[i]);
+            if (token_usage.total_tokens) {
+              termLog('data',
+                `Tokens: ${token_usage.total_tokens} (prompt ${token_usage.prompt_tokens}, ` +
+                `completion ${token_usage.completion_tokens}) ≈ $${(token_usage.estimated_cost_usd || 0).toFixed(4)}`
+              );
+            }
+          }
+        } catch (_) { /* ignore */ }
+
         const r = jobData.result || {};
-        if (r.hf_sentiment_score === undefined) r.hf_sentiment_score = parseFloat((r.sentiment_score * (0.8 + Math.random() * 0.4)).toFixed(4));
+        // The backend now always populates hf_sentiment_score (0.0 on failure).
+        if (typeof r.hf_sentiment_score !== 'number') r.hf_sentiment_score = 0;
         termLog('ok', '>>> ANALYSIS COMPLETE.');
         renderReport(r);
         break;
       }
       if (st === 'failed') {
-        termLog('err', `FAILED: ${jobData.error}`);
+        termLog('err', `FAILED: ${jobData.error || 'unknown error'}`);
         setTermStatus('ERROR', 'var(--red)');
         setProgress(0);
         break;
@@ -924,6 +986,42 @@ async function runLive(query) {
     updateLiveBtn();
     await runDemo(query);
   }
+}
+
+// Render a single structured /logs entry into the terminal pane.
+function renderToolLog(entry) {
+  if (!entry) return;
+  const ev = entry.event_type;
+  if (ev === 'tool_invocation') {
+    const tool = entry.tool_name || '?';
+    const ms   = entry.latency_ms != null ? `${Math.round(entry.latency_ms)}ms` : '';
+    if (entry.success) {
+      termLog('ok', `✓ ${tool.padEnd(18)} ${ms}`);
+      // Surface a couple of useful fields per tool for the live terminal feel.
+      const out = entry.outputs || {};
+      if (tool === 'market_data' && out.price != null) {
+        termLog('data', `  price=$${Number(out.price).toFixed(2)} mcap=${fmtCap(out.market_cap)} pe=${out.pe_ratio ?? '—'}`);
+      } else if (tool === 'news_sentiment') {
+        termLog('data', `  articles=${out.article_count ?? 0} score=${out.sentiment_score ?? 0}`);
+      } else if (tool === 'peer_correlation') {
+        termLog('data', `  sector=${out.sector_etf ?? '—'} ρ=${out.sector_correlation ?? '—'} mkt=${out.market_correlation ?? '—'}`);
+      } else if (tool === 'hf_sentiment') {
+        termLog('hf', `  cloud_score=${out.score ?? 0}`);
+      }
+    } else {
+      termLog('err', `✗ ${tool.padEnd(18)} ${ms} — ${entry.error || 'failed'}`);
+    }
+  } else if (ev === 'token_usage') {
+    // We surface token usage at completion instead — don't double-print here.
+  }
+}
+
+function fmtCap(v) {
+  if (v == null) return '—';
+  if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
+  if (v >= 1e9)  return `$${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6)  return `$${(v / 1e6).toFixed(1)}M`;
+  return `$${v}`;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -963,7 +1061,13 @@ document.getElementById('command-input').addEventListener('keydown', e => {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 window.addEventListener('load', async () => {
   await loadConfig();
-  setTimeout(() => runDemo('Analyse TSLA prospects'), 400);
+  // If the backend is reachable, leave the dashboard idle so the user can
+  // type their own ticker. Only auto-run the canned demo when offline.
+  if (!isLive) {
+    setTimeout(() => runDemo('Analyse TSLA prospects'), 400);
+  } else {
+    termLog('sys', 'Ready. Type a ticker and press EXECUTE ↵');
+  }
 });
 </script>
 </body>

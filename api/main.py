@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -9,11 +10,14 @@ from dotenv import load_dotenv
 # Load .env from the project root regardless of the working directory.
 # This runs before any other module imports settings, so all env vars
 # are populated when pydantic-settings reads them.
-_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=_ENV_FILE, override=True)  # override=True: .env vars win
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_ENV_FILE = _PROJECT_ROOT / ".env"
+load_dotenv(dotenv_path=_ENV_FILE, override=True)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Response
+from fastapi.responses import FileResponse, RedirectResponse
 
 from api.routes import router
 from utils.config import get_settings
@@ -25,6 +29,35 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s – %(message)s",
 )
 
+
+# ── lifespan replaces the deprecated @app.on_event hooks ────────────────────
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Startup: warm LLM, start monitoring. Shutdown: close shared clients."""
+    from utils.llm_client import ensure_model_ready, get_model_name
+    model = get_model_name()
+
+    ready = await ensure_model_ready()
+    if ready:
+        logging.info("LLM Provider Ready: %s initialized successfully.", model)
+    else:
+        logging.error("LLM Readiness Check Failed for %s.", model)
+        logging.warning("Proceeding with caution. Agent may fail on first analysis.")
+
+    from monitoring.scheduler import MonitoringService
+    svc = MonitoringService()
+    svc.start()
+
+    try:
+        yield
+    finally:
+        try:
+            from tools.hf_sentiment import aclose_client
+            await aclose_client()
+        except Exception as exc:
+            logging.warning("Error closing shared HF client: %s", exc)
+
+
 app = FastAPI(
     title="M.I.R.A. – Market Intelligence & Research Agent",
     description=(
@@ -32,6 +65,7 @@ app = FastAPI(
         "performs deep research, and generates structured investment analysis reports."
     ),
     version="1.0.0",
+    lifespan=_lifespan,
 )
 
 app.add_middleware(
@@ -41,32 +75,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from fastapi.responses import FileResponse
-
 app.include_router(router)
+
+
+# ── Demo UI served at the root path ─────────────────────────────────────────
+_DEMO_PATH = _PROJECT_ROOT / "demo.html"
+_SAMPLE_PATH = _PROJECT_ROOT / "sample_output.json"
+
+# `no-store` ensures users on the demo always pick up the latest UI changes
+# without having to do a hard reload (Tailwind/Chart.js are still cached
+# normally because they come from CDNs).
+_NO_CACHE = {"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"}
 
 
 @app.get("/", include_in_schema=False)
 async def serve_demo():
-    """Serve the HTML demo at the root path."""
-    demo_path = Path(__file__).resolve().parent.parent / "demo.html"
-    return FileResponse(demo_path)
+    """Serve the Neural Core demo HTML at the root path."""
+    if not _DEMO_PATH.exists():
+        return RedirectResponse(url="/docs")
+    return FileResponse(_DEMO_PATH, media_type="text/html", headers=_NO_CACHE)
 
 
-@app.on_event("startup")
-async def _startup():
-    """Start the background monitoring service and verify LLM readiness."""
-    from utils.llm_client import ensure_model_ready, get_model_name
-    model = get_model_name()
-    
-    # Auto-pull model if using Ollama and it's missing
-    ready = await ensure_model_ready()
-    if ready:
-        logging.info(f"LLM Provider Ready: {model} initialized successfully.")
-    else:
-        logging.error(f"LLM Readiness Check Failed for {model}.")
-        logging.warning("Proceeding with caution. Agent may fail on first analysis.")
+@app.get("/demo", include_in_schema=False)
+async def serve_demo_alias():
+    """Alias so `/demo` also works."""
+    return await serve_demo()
 
-    from monitoring.scheduler import MonitoringService
-    svc = MonitoringService()
-    svc.start()
+
+@app.get("/sample_output.json", include_in_schema=False)
+async def serve_sample_output():
+    """Expose the bundled sample report so the demo can render an example offline."""
+    if not _SAMPLE_PATH.exists():
+        return RedirectResponse(url="/")
+    return FileResponse(_SAMPLE_PATH, media_type="application/json", headers=_NO_CACHE)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Avoid noisy 404s in the access log when browsers request a favicon."""
+    return Response(status_code=204)

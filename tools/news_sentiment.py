@@ -1,9 +1,17 @@
 """tools/news_sentiment.py – fetches news via NewsAPI and scores via FinBERT.
 
-Trade-off documented in README:
-  • FinBERT (local)  – no API cost, domain-tuned for finance, ~200 ms/article,
+Optimisations vs. the original implementation:
+  * News fetch uses async httpx (not blocking `requests`) so we don't stall the
+    event loop while waiting on NewsAPI.
+  * FinBERT is invoked in a single batched call instead of N sequential calls
+    (transformers pipeline supports list inputs natively, ~3-5x faster).
+  * NewsAPI responses are cached for 5 minutes per (company, ticker) tuple to
+    avoid repeated calls when the same ticker is analysed in quick succession.
+
+Trade-offs documented in README:
+  * FinBERT (local)  – no API cost, domain-tuned for finance, ~200 ms/article,
     but requires ~500 MB model download on first run and GPU is optional.
-  • LLM-based        – zero extra setup, GPT-4 is highly context-aware, but
+  * LLM-based        – zero extra setup, GPT-4 is highly context-aware, but
     adds latency & cost per article. FinBERT is the better default here.
 """
 
@@ -12,13 +20,21 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import os
+import time
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any
 
-import requests
+import httpx
+
+logger = logging.getLogger("mira.news_sentiment")
 
 _FINBERT_MODEL = "ProsusAI/finbert"
+_NEWSAPI_URL = "https://newsapi.org/v2/everything"
+
+# Simple in-process TTL cache for the NewsAPI response.
+_NEWS_CACHE: dict[str, tuple[float, list[dict]]] = {}
+_NEWS_TTL_SECONDS = 300  # 5 min
 
 
 @lru_cache(maxsize=1)
@@ -28,7 +44,6 @@ def _get_pipeline():
         from transformers import pipeline  # type: ignore
         return pipeline("sentiment-analysis", model=_FINBERT_MODEL, truncation=True)
     except (AttributeError, ImportError) as e:
-        # NumPy 2.x crash happens during import
         raise RuntimeError(f"FinBERT initialization failed: {str(e)}")
 
 
@@ -43,14 +58,11 @@ class NewsSentimentTool:
         self._key = news_api_key
 
     async def execute(self, company_name: str, ticker: str) -> dict[str, Any]:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, self._fetch_and_score, company_name, ticker
-        )
+        articles = await self._fetch_articles(company_name, ticker)
+        return await asyncio.to_thread(self._score, articles)
 
-    def _fetch_and_score(self, company_name: str, ticker: str) -> dict[str, Any]:
-        articles = self._fetch_articles(company_name, ticker)
-
+    # ── scoring (CPU-bound, runs in a worker thread) ─────────────────────────
+    def _score(self, articles: list[dict]) -> dict[str, Any]:
         if not articles:
             return {
                 "articles": [],
@@ -63,29 +75,28 @@ class NewsSentimentTool:
         try:
             nlp = _get_pipeline()
         except Exception as e:
-            # Handle NumPy 2.x or model loading issues gracefully
-            logging.getLogger("mira").warning(f"Local FinBERT failed: {str(e)}. Falling back to neutral scores.")
+            logger.warning("Local FinBERT failed: %s. Falling back to neutral scores.", e)
             return {
                 "articles": articles,
                 "sentiment_distribution": {"positive": 0, "negative": 0, "neutral": len(articles)},
                 "sentiment_score": 0.0,
                 "article_count": len(articles),
-                "error": str(e)
+                "error": str(e),
             }
 
-        results = []
+        # Batch all texts into a single pipeline call.
+        texts: list[str] = [
+            f"{a.get('title', '')}. {a.get('description') or ''}"[:512] for a in articles
+        ]
+        scored_batch = nlp(texts) if texts else []
+
+        results: list[dict] = []
         dist: dict[str, int] = {"positive": 0, "negative": 0, "neutral": 0}
         oldest_hours: float | None = None
 
-        for art in articles:
-            text = f"{art.get('title', '')}. {art.get('description') or ''}"
-            text = text[:512]  # FinBERT max token safety
-            scored = nlp(text)[0]
+        for art, scored in zip(articles, scored_batch):
             label: str = scored["label"].lower()
             dist[label] = dist.get(label, 0) + 1
-
-            # Age in hours
-            from datetime import datetime, timezone
 
             published = art.get("publishedAt")
             age_h: float | None = None
@@ -98,17 +109,15 @@ class NewsSentimentTool:
                 except Exception:
                     pass
 
-            results.append(
-                {
-                    "id": _article_id(art.get("url", "")),
-                    "title": art.get("title"),
-                    "url": art.get("url"),
-                    "published_at": published,
-                    "age_hours": round(age_h, 1) if age_h is not None else None,
-                    "sentiment": label,
-                    "confidence": round(scored["score"], 4),
-                }
-            )
+            results.append({
+                "id": _article_id(art.get("url", "")),
+                "title": art.get("title"),
+                "url": art.get("url"),
+                "published_at": published,
+                "age_hours": round(age_h, 1) if age_h is not None else None,
+                "sentiment": label,
+                "confidence": round(float(scored["score"]), 4),
+            })
 
         total = len(results)
         score = (dist["positive"] - dist["negative"]) / total if total else 0.0
@@ -121,26 +130,32 @@ class NewsSentimentTool:
             "oldest_article_hours": round(oldest_hours, 1) if oldest_hours else None,
         }
 
-    def _fetch_articles(self, company_name: str, ticker: str) -> list[dict]:
+    # ── async fetch with TTL cache ───────────────────────────────────────────
+    async def _fetch_articles(self, company_name: str, ticker: str) -> list[dict]:
         if not self._key:
             return []
-        query = f'"{company_name}" OR "{ticker}"'
-        url = (
-            "https://newsapi.org/v2/everything"
-            f"?q={requests.utils.quote(query)}"
-            "&language=en&sortBy=publishedAt&pageSize=5"
-        )
+
+        cache_key = f"{company_name}|{ticker}".lower()
+        now = time.time()
+        cached = _NEWS_CACHE.get(cache_key)
+        if cached and (now - cached[0]) < _NEWS_TTL_SECONDS:
+            return cached[1]
+
+        params = {
+            "q": f'"{company_name}" OR "{ticker}"',
+            "language": "en",
+            "sortBy": "publishedAt",
+            "pageSize": "5",
+        }
+        headers = {"Authorization": f"Bearer {self._key}"}
         try:
-            resp = requests.get(
-                url, headers={"Authorization": f"Bearer {self._key}"}, timeout=10
-            )
-            resp.raise_for_status()
-            return resp.json().get("articles", [])
-        except Exception:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(_NEWSAPI_URL, params=params, headers=headers)
+                resp.raise_for_status()
+                articles = resp.json().get("articles", []) or []
+        except Exception as exc:
+            logger.warning("NewsAPI fetch failed: %s", exc)
             return []
 
-
-if __name__ == "__main__":
-    news = NewsSentiment()
-    articles = news._fetch_articles("", "")
-    print(articles)
+        _NEWS_CACHE[cache_key] = (now, articles)
+        return articles

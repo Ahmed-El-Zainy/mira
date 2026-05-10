@@ -47,8 +47,7 @@ class PeerCorrelationTool:
         sector: str | None = None,
         peers: list[str] | None = None,
     ) -> dict[str, Any]:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._compute, ticker, sector, peers)
+        return await asyncio.to_thread(self._compute, ticker, sector, peers)
 
     def _compute(
         self,

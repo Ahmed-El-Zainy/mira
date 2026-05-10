@@ -256,7 +256,9 @@ REDIS_PORT=6379
 docker compose up --build
 ```
 
-API available at `http://localhost:8000` · Demo at `http://localhost:8000/`
+Open [http://localhost:8000/](http://localhost:8000/) — the **Neural Core demo
+loads directly** at the root path (no `/demo.html` suffix needed). The same
+HTML is also served at `/demo`. Swagger docs live at `/docs`.
 
 ### 2B — Local Python
 
@@ -273,8 +275,10 @@ pip install "numpy<2"
 # Start Redis (if not already running)
 redis-server --daemonize yes
 
-# Start the API
+# Start the API (demo loads at http://localhost:8000/ directly)
 uvicorn api.main:app --reload
+# or, equivalently, via the CLI:
+mira serve --reload --open
 ```
 
 ### 3 — Verify
@@ -293,6 +297,81 @@ curl -X POST http://localhost:8000/analyze \
   -H "Content-Type: application/json" \
   -d '{"query": "Analyse Alphabet Inc. (GOOGL)"}'
 # → {"job_id": "abc-123", "status": "queued", "progress": 0}
+```
+
+---
+
+## CLI
+
+M.I.R.A. ships with a first-class command-line tool — `mira` — that talks to
+either a running API server (default) **or** runs the agent in-process via
+`--local` (no HTTP round-trips, no separate server).
+
+### Install
+
+```bash
+# from the repo root
+pip install -e .
+# the `mira` command is now on your PATH
+mira --help
+```
+
+You can also run it without installing:
+
+```bash
+python cli.py --help
+```
+
+### Common commands
+
+```bash
+# Boot the API server and pop the demo open in a browser tab
+mira serve --reload --open       # http://localhost:8000/  ← Neural Core demo
+
+# Open the demo against an already-running server
+mira ui                          # opens http://localhost:8000/
+mira --api http://prod:8000 ui   # against a remote deployment
+
+# Run a one-shot analysis against a running API and stream progress
+mira analyze "Analyse Tesla, Inc. (TSLA)"
+
+# Same thing, but without an API server (Redis still required)
+mira analyze "Analyse Apple (AAPL)" --local --save aapl.json
+
+# Submit-and-forget (returns the job_id immediately)
+mira analyze "Analyse NVDA" --no-watch
+
+# Inspect a job
+mira status <job_id>
+mira logs   <job_id> --follow
+
+# Persistent monitoring (works in both --local and HTTP mode)
+mira monitor add TSLA --cadence 12
+mira monitor list
+mira monitor remove TSLA
+
+# Health & config
+mira health
+mira config
+
+# Recent jobs
+mira jobs --limit 20
+```
+
+### Useful flags
+
+| Flag          | Purpose                                                                  |
+|---------------|--------------------------------------------------------------------------|
+| `--api URL`   | Point at a remote M.I.R.A. server (env: `MIRA_API_URL`).                 |
+| `--local`     | Run AgentCore in-process — fastest path, ideal for scripts and CI.       |
+| `--json`      | Emit raw JSON instead of pretty tables — pipe into `jq`, `fx`, etc.      |
+| `--quiet/-q`  | Suppress decorative output — reports collapse to a single summary line.  |
+
+Examples piping JSON output:
+
+```bash
+mira analyze "Analyse Microsoft (MSFT)" --local --json | jq '.key_findings'
+mira logs <job_id> --json | jq '.logs[].latency_ms'
 ```
 
 ---
@@ -542,6 +621,41 @@ Five complementary lenses for production quality assessment:
 **Financial backtesting** — for historical analyses, evaluate whether acting on `key_findings` outperformed buy-and-hold SPY over a 5-day window. Apply Sharpe ratio and maximum-drawdown constraints.
 
 **Operational metrics** — track p99 latency per job, tool-call budget utilisation, failure rate by category (timeout / bad ticker / LLM error), and cost per analysis. Alert when cost > $0.50/job or failure rate > 2%.
+
+---
+
+## Performance Notes & Roadmap
+
+### Already applied (this revision)
+
+| Area                         | Change                                                                                                  |
+|------------------------------|---------------------------------------------------------------------------------------------------------|
+| Tool execution               | Independent tools (`market_data`, `news_sentiment`, `hf_sentiment`) now fan out via `asyncio.gather`.    |
+| Redis I/O                    | Single shared `ConnectionPool` (was: one pool per module). Job status uses `HSET` instead of GET+SET.    |
+| Job/log retention            | 7-day TTLs on every job/log/token key — no more unbounded memory growth.                                |
+| HuggingFace inference        | One reusable `httpx.AsyncClient`; exponential backoff on 503 / 429 (cold starts no longer return 0.0).  |
+| FinBERT                      | Single batched pipeline call instead of N sequential — ~3-5× faster on 5-article default.               |
+| News fetch                   | Async `httpx` (was blocking `requests`); 5-min in-process TTL cache per `(company, ticker)`.            |
+| Market data                  | 60 s in-process cache; modern `asyncio.to_thread`; safer try/except around `yfinance.info`.             |
+| Token usage                  | `HINCRBY` / `HINCRBYFLOAT` — atomic counters, no read-modify-write race.                                |
+
+### Suggested next steps (ranked by impact)
+
+1. **Move BackgroundTasks → real queue.** FastAPI's `BackgroundTasks` shares the request thread pool. Use **arq** or **Celery + Redis broker** so analyses don't compete with HTTP serving and survive restarts.
+2. **Stream progress via SSE / WebSockets.** The demo currently polls `/status` every ~1 s. A `GET /stream/{job_id}` SSE endpoint that publishes Redis pub/sub events would cut perceived latency from seconds to ~10 ms.
+3. **Cache LLM responses by `(prompt_hash, model)`.** Planner + reflection prompts are highly repetitive across the same ticker; an LRU on `chat.completions.create` would save 30-60% of tokens on hot paths.
+4. **Switch yfinance → Polygon.io / Finnhub.** `yfinance` scrapes Yahoo and is rate-limited and brittle. A real provider gives sub-second, real-time data and proper SLAs.
+5. **Persist reports to SQLite/Postgres.** Redis is great for hot state; long-term audit/backtesting needs a relational store with timeseries indexes.
+6. **Trigger evaluator → batch yfinance call.** `monitoring/triggers.py` calls `yf.Ticker(t).history(...)` per ticker; `yf.download(list_of_tickers, ...)` returns all at once.
+7. **APScheduler async loop** instead of `schedule` + `time.sleep(30)` in a thread — same code, no busy loop, no GIL contention.
+8. **Replace deprecated `@app.on_event` with `lifespan`** (FastAPI 0.93+).
+9. **Multi-stage Dockerfile.** Current image bundles `build-essential` and 4-5 GB of torch wheels at runtime. A wheel-builder stage + slim runtime would cut image size ~60%.
+10. **Auth + rate limiting.** No auth today. Add API-key middleware and `slowapi` before any public deployment.
+11. **Structured tracing.** Add `opentelemetry-instrumentation-fastapi` + Redis instrumentation — lets you visualise per-tool latency in Jaeger/Tempo.
+12. **CI (GitHub Actions).** `pytest -v` + `ruff check` on every PR; gate merges on the regression suite passing.
+13. **Pin `numpy<2` in `requirements.txt`.** README acknowledges the bug — pinning prevents anyone from hitting it.
+14. **Replace `requests` with `httpx`** everywhere (one library, async-native).
+15. **Job cancellation API.** `DELETE /jobs/{id}` to cancel an in-flight analysis (useful when a user closes the demo tab).
 
 ---
 

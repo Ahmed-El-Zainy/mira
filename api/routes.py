@@ -56,6 +56,15 @@ async def get_job_logs(job_id: str):
     return {"job_id": job_id, "logs": logs, "token_usage": tokens}
 
 
+# ── GET /jobs ─────────────────────────────────────────────────────────────────
+@router.get("/jobs")
+async def list_jobs(limit: int = 20):
+    """Return the most-recently-created jobs (best-effort scan over Redis)."""
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="`limit` must be between 1 and 200.")
+    return {"jobs": _redis.list_recent_jobs(limit=limit)}
+
+
 # ── POST /monitor_start ───────────────────────────────────────────────────────
 @router.post("/monitor_start")
 async def start_monitoring(request: MonitoringRequest):
@@ -66,33 +75,54 @@ async def start_monitoring(request: MonitoringRequest):
         "ticker": request.ticker.upper(),
         "cadence_hours": request.cadence_hours,
     }
-    # ── REPLACE the existing GET /config route in api/routes.py with this ─────────
-    #
-    # Problem: the old route returned _settings.hf_model_id which is the
-    # FinBERT SENTIMENT model ("yiyanghkust/finbert-tone"), not the LLM model.
-    # The demo selector should show the LLM model (llm_hf_model_id).
 
 
+# ── GET /monitor/list ─────────────────────────────────────────────────────────
+@router.get("/monitor/list")
+async def list_monitored():
+    """Return all tickers currently registered for proactive monitoring."""
+    tickers = _redis.get_all_monitored_tickers()
+    rows = []
+    for t in tickers:
+        s = _redis.get_ticker_state(t) or {}
+        rows.append({
+            "ticker": t,
+            "cadence_hours": s.get("cadence_hours"),
+            "last_run": s.get("last_run"),
+            "baseline_price": s.get("baseline_price"),
+            "baseline_volume": s.get("baseline_volume"),
+        })
+    return {"monitored": rows}
+
+
+# ── DELETE /monitor/{ticker} ──────────────────────────────────────────────────
+@router.delete("/monitor/{ticker}")
+async def stop_monitoring(ticker: str):
+    """Remove a ticker from the monitored set."""
+    removed = _redis.unregister_monitored_ticker(ticker.upper())
+    return {"status": "removed" if removed else "not_found", "ticker": ticker.upper()}
+
+
+# ── GET /config ───────────────────────────────────────────────────────────────
 @router.get("/config")
 async def get_config():
     """
-        Return public LLM configuration so the demo can build its
-        model selector directly from .env values — nothing hardcoded in HTML.
+    Return public LLM configuration so the demo can build its
+    model selector directly from .env values — nothing hardcoded in HTML.
 
     Response shape (matches what loadConfig() in demo.html expects):
       {
         "llm_provider":       "hf" | "ollama" | "openai",
         "ollama_model":       "lfm2.5-thinking:1.2b",          # OLLAMA_MODEL
         "hf_model_id":        "Qwen/Qwen3.6-35B-A3B:deepinfra", # LLM_HF_MODEL_ID  ← LLM
-        "hf_sentiment_model": "yiyanghkust/finbert-tone"         # HF_MODEL_ID      ← classification
+        "hf_sentiment_model": "yiyanghkust/finbert-tone"        # HF_MODEL_ID      ← classification
       }
-
     """
     return {
         "llm_provider": _settings.llm_provider,
         "ollama_model": _settings.ollama_model,
-        "hf_model_id": _settings.llm_hf_model_id,  # ← LLM model for the selector
-        "hf_sentiment_model": _settings.hf_model_id,  # ← sentiment model (display only)
+        "hf_model_id": _settings.llm_hf_model_id,
+        "hf_sentiment_model": _settings.hf_model_id,
     }
 
 
